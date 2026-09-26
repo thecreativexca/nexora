@@ -1,0 +1,154 @@
+{
+ "smartphones": [
+  {
+   "t": "iPhone 5s",
+   "img": "https://cdn.dummyjson.com/product-images/smartphones/iphone-5s/thumbnail.webp"
+  },
+  {
+   "t": "iPhone 6",
+   "img": "https://cdn.dummyjson.com/product-images/smartphones/iphone-6/thumbnail.webp"
+  },
+  {
+   "t": "iPhone 13 Pro",
+   "img": "https://cdn.dummyjson.com/product-images/smartphones/iphone-13-pro/thumbnail.webp"
+  },
+  {
+   "t": "iPhone X",
+   "img": "https://cdn.dummyjson.com/product-images/smartphones/iphone-x/thumbnail.webp"
+  },
+  {
+   "t": "Oppo A57",
+   "img": "https://cdn.dummyjson.com/product-images/smartphones/oppo-a57/thumbnail.webp"
+  },
+  {
+   "t": "Oppo F19 Pro Plus",
+   "img": "https://cdn.dummyjson.com/product-images/smartphones/oppo-f19-pro-plus/thumbnail.webp"
+  },
+  {
+   "t": "Oppo K1",
+   "img": "https://cdn.dummyjson.com/product-images/smartphones/oppo-k1/thumbnail.webp"
+  },
+  {
+   "t": "Realme C35",
+   "img": "https://cdn.dummyjson.com/product-images/smartphones/realme-c35/thumbnail.webp"
+  },
+  {
+   "t": "Realme X",
+   "img": "https://cdn.dummyjson.com/product-images/smartphones/realme-x/thumbnail.webp"
+  },
+  {
+   "t": "Realme XT",
+   "img": "https://cdn.dummyjson.com/product-images/smartphones/realme-xt/thumbnail.webp"
+  },
+  {
+   "t": "Samsung Galaxy S7",
+   "img": "https://cdn.dummyjson.com/product-images/smartphones/samsung-galaxy-s7/thumbnail.webp"
+  },
+  {
+   "t": "Samsung Galaxy S8",
+   "img": "https://cdn.dummyjson.com/product-images/smartphones/samsung-galaxy-s8/thumbnail.webp"
+  },
+  {
+   "t": "Samsung Galaxy S10",
+   "img": "https://cdn.dummyjson.com/product-images/smartphones/samsung-galaxy-s10/thumbnail.webp"
+  },
+  {
+   "t": "Vivo S1",
+   "img": "https://cdn.dummyjson.com/product-images/smartphones/vivo-s1/thumbnail.webp"
+  }
+ ],
+ "laptops": [
+  {
+   "t": "Apple MacBook Pro 14 Inch Space Grey",
+   "img": "https://cdn.dummyjson.com/product-images/laptops/apple-macbook-pro-14-inch-space-grey/thumbnail.webp"
+  },
+  {
+   "t": "Asus Zenbook Pro Dual Screen Laptop",
+   "img": "https://cdn.dummyjson.com/product-images/laptops/asus-zenbook-pro-dual-screen-laptop/thumbnail.webp"
+  },
+  {
+   "t": "Huawei Matebook X Pro",
+   "img": "https://cdn.dummyjson.com/product-images/laptops/huawei-matebook-x-pro/thumbnail.webp"
+  },
+  {
+   "t": "Lenovo Yoga 920",
+   "img": "https://cdn.dummyjson.com/product-images/laptops/lenovo-yoga-920/thumbnail.webp"
+  },
+  {
+   "t": "New DELL XPS 13 9300 Laptop",
+   "img": "https://cdn.dummyjson.com/product-images/laptops/new-dell-xps-13-9300-laptop/thumbnail.webp"
+  }
+ ],
+ "tablets": [
+  {
+   "t": "iPad Mini 2021 Starlight",
+   "img": "https://cdn.dummyjson.com/product-images/tablets/ipad-mini-2021-starlight/thumbnail.webp"
+  },
+  {
+   "t": "Samsung Galaxy Tab S8 Plus Grey",
+   "img": "https://cdn.dummyjson.com/product-images/tablets/samsung-galaxy-tab-s8-plus-grey/thumbnail.webp"
+  },
+  {
+   "t": "Samsung Galaxy Tab White",
+   "img": "https://cdn.dummyjson.com/product-images/tablets/samsung-galaxy-tab-white/thumbnail.webp"
+  }
+ ],
+ "mobile-accessories": [
+  {
+   "t": "Amazon Echo Plus",
+   "img": "https://cdn.dummyjson.com/product-images/mobile-accessories/amazon-echo-plus/thumbnail.webp"
+  },
+  {
+   "t": "Apple Airpods",
+   "img": "https://cdn.dummyjson.com/product-images/mobile-accessories/apple-airpods/thumbnail.webp"
+  },
+  {
+   "t": "Apple AirPods Max Silver",
+   "img": "https://cdn.dummyjson.com/product-images/mobile-accessories/apple-airpods-max-silver/thumbnail.webp"
+  },
+  {
+   "t": "Apple Airpower Wireless Charger",
+   "img": "https://cdn.dummyjson.com/product-images/mobile-accessories/apple-airpower-wireless-charger/thumbnail.webp"
+  },
+  {
+   "t": "Apple HomePod Mini Cosmic Grey",
+   "img": "https://cdn.dummyjson.com/product-images/mobile-accessories/apple-homepod-mini-cosmic-grey/thumbnail.webp"
+  },
+  {
+   "t": "Apple iPhone Charger",
+   "img": "https://cdn.dummyjson.com/product-images/mobile-accessories/apple-iphone-charger/thumbnail.webp"
+  },
+  {
+   "t": "Apple MagSafe Battery Pack",
+   "img": "https://cdn.dummyjson.com/product-images/mobile-accessories/apple-magsafe-battery-pack/thumbnail.webp"
+  },
+  {
+   "t": "Apple Watch Series 4 Gold",
+   "img": "https://cdn.dummyjson.com/product-images/mobile-accessories/apple-watch-series-4-gold/thumbnail.webp"
+  },
+  {
+   "t": "Beats Flex Wireless Earphones",
+   "img": "https://cdn.dummyjson.com/product-images/mobile-accessories/beats-flex-wireless-earphones/thumbnail.webp"
+  },
+  {
+   "t": "iPhone 12 Silicone Case with MagSafe Plum",
+   "img": "https://cdn.dummyjson.com/product-images/mobile-accessories/iphone-12-silicone-case-with-magsafe-plum/thumbnail.webp"
+  },
+  {
+   "t": "Monopod",
+   "img": "https://cdn.dummyjson.com/product-images/mobile-accessories/monopod/thumbnail.webp"
+  },
+  {
+   "t": "Selfie Lamp with iPhone",
+   "img": "https://cdn.dummyjson.com/product-images/mobile-accessories/selfie-lamp-with-iphone/thumbnail.webp"
+  },
+  {
+   "t": "Selfie Stick Monopod",
+   "img": "https://cdn.dummyjson.com/product-images/mobile-accessories/selfie-stick-monopod/thumbnail.webp"
+  },
+  {
+   "t": "TV Studio Camera Pedestal",
+   "img": "https://cdn.dummyjson.com/product-images/mobile-accessories/tv-studio-camera-pedestal/thumbnail.webp"
+  }
+ ]
+}
