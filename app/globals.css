@@ -1,8 +1,15 @@
 @import "tailwindcss";
 
 @theme inline {
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "Roboto Mono", monospace;
+  --color-brand-50: #eef2ff;
+  --color-brand-100: #e0e7ff;
+  --color-brand-200: #c7d2fe;
+  --color-brand-500: #6366f1;
+  --color-brand-600: #4f46e5;
+  --color-brand-700: #4338ca;
+  --color-brand-900: #312e81;
 }
 
 html {
@@ -11,15 +18,64 @@ html {
 }
 
 body {
-  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   overflow-x: hidden;
+  background:
+    radial-gradient(circle at 8% 0%, rgb(224 231 255 / 45%), transparent 28rem),
+    #f8fafc;
+  color: #0f172a;
+}
+
+::selection {
+  background: #c7d2fe;
+  color: #1e1b4b;
+}
+
+:where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+  transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+}
+
+:where(input:not([type="checkbox"]):not([type="radio"]), select, textarea):focus {
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 0 3px rgb(99 102 241 / 14%);
+  outline: none;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Shared visual language used by both storefront and staff portal surfaces. */
+.app-surface {
+  border: 1px solid rgb(226 232 240 / 90%);
+  border-radius: 1rem;
+  background: rgb(255 255 255 / 92%);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 4%), 0 12px 32px rgb(15 23 42 / 4%);
+}
+
+.page-title {
+  letter-spacing: -0.025em;
+}
+
+main h1,
+main h2 {
+  letter-spacing: -0.02em;
+}
+
+tbody tr {
+  transition: background-color 150ms ease;
+}
+
+tbody tr:hover {
+  background-color: rgb(238 242 255 / 35%);
 }
 
 /* Guaranteed visible keyboard focus everywhere (WCAG 2.4.7). */
 :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
-  outline: 2px solid #0f172a;
-  outline-offset: 2px;
-  border-radius: 6px;
+  outline: 2px solid #6366f1;
+  outline-offset: 3px;
+  border-radius: 8px;
 }
 
 /* Remove the browser's default search decorations so the field matches inputs. */

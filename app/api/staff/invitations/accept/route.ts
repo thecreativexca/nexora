@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     // joining this way goes straight to MFA setup.
     const state: StaffAuthResult = {
       staff,
-      nextStep: staffRoleRequiresMfa(role) ? "MFA_SETUP" : "COMPLETE",
+      nextStep: staffRoleRequiresMfa(role) ? "MFA_VERIFY" : "COMPLETE",
     };
     const entry = await createStaffEntry(state);
 

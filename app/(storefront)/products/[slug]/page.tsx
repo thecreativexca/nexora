@@ -83,13 +83,15 @@ export default async function ProductDetailPage({ params }: PageProps<"/products
         </ol>
       </nav>
 
-      <div className="grid gap-8 lg:grid-cols-2 lg:items-start">
-        <ProductImage
-          src={product.image}
-          alt={product.name}
-          sizes="(max-width: 1024px) 100vw, 560px"
-          priority
-        />
+      <div className="grid gap-8 rounded-3xl border border-slate-200/90 bg-white p-4 shadow-xl shadow-slate-900/5 sm:p-6 lg:grid-cols-2 lg:items-start lg:p-8">
+        <div className="overflow-hidden rounded-2xl bg-slate-50 p-2">
+          <ProductImage
+            src={product.image}
+            alt={product.name}
+            sizes="(max-width: 1024px) 100vw, 560px"
+            priority
+          />
+        </div>
 
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -127,19 +129,19 @@ export default async function ProductDetailPage({ params }: PageProps<"/products
           </div>
 
           <ul className="mt-8 grid gap-3 sm:grid-cols-2">
-            <li className="flex items-start gap-2 rounded-lg border border-slate-200 p-3 text-sm text-slate-700">
+            <li className="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-700">
               <TruckIcon className="h-4 w-4 shrink-0 text-slate-500" />
               Secure online checkout with PayPal.
             </li>
-            <li className="flex items-start gap-2 rounded-lg border border-slate-200 p-3 text-sm text-slate-700">
+            <li className="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-700">
               <ShieldIcon className="h-4 w-4 shrink-0 text-slate-500" />
               Genuine product with brand warranty.
             </li>
-            <li className="flex items-start gap-2 rounded-lg border border-slate-200 p-3 text-sm text-slate-700">
+            <li className="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-700">
               <CheckIcon className="h-4 w-4 shrink-0 text-slate-500" />
               7-day replacement on unopened devices.
             </li>
-            <li className="flex items-start gap-2 rounded-lg border border-slate-200 p-3 text-sm text-slate-700">
+            <li className="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-700">
               <WrenchIcon className="h-4 w-4 shrink-0 text-slate-500" />
               In-house service centre for setup and repairs.
             </li>

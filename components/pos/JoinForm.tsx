@@ -14,7 +14,7 @@ interface CheckResponse {
   invitation: { email: string; role: string; expiresAt: string };
 }
 interface AcceptResponse {
-  step: "COMPLETE" | "MFA_SETUP" | "MFA_VERIFY";
+  step: "COMPLETE" | "MFA_VERIFY";
   redirectTo: string;
 }
 

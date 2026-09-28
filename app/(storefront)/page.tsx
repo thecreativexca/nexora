@@ -36,7 +36,7 @@ export default async function HomePage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-12 px-4 py-6 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-7xl space-y-16 px-4 py-8 sm:px-6 lg:px-8">
       <HeroBanner categories={databaseUnavailable ? [] : categories} />
 
       {databaseUnavailable ? (
@@ -122,7 +122,7 @@ export default async function HomePage() {
 
           <section
             aria-labelledby="why-nexora"
-            className="rounded-2xl border border-slate-200 bg-slate-50 p-6 sm:p-8"
+            className="overflow-hidden rounded-3xl border border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-cyan-50 p-6 shadow-sm sm:p-8"
           >
             <h2 id="why-nexora" className="text-xl font-bold tracking-tight text-slate-900">
               Why shop with Nexora
@@ -131,7 +131,7 @@ export default async function HomePage() {
               {SERVICE_FACTS.map((fact) => (
                 <li
                   key={fact}
-                  className="rounded-xl border border-slate-200 bg-white p-4 text-sm font-medium text-slate-700"
+                  className="rounded-2xl border border-white bg-white/80 p-4 text-sm font-semibold text-slate-700 shadow-sm backdrop-blur"
                 >
                   {fact}
                 </li>

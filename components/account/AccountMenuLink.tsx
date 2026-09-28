@@ -16,7 +16,7 @@ export async function AccountMenuLink() {
     <Link
       href={href}
       title={customer ? "View your account" : "Sign in to your account"}
-      className="hidden h-11 items-center gap-2 rounded-lg px-3 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900 sm:inline-flex"
+      className="hidden h-11 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-indigo-50 hover:text-indigo-700 sm:inline-flex"
     >
       <UserIcon />
       <span className="max-w-[8rem] truncate">{label}</span>

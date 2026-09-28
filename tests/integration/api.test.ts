@@ -409,8 +409,8 @@ async function runOrderTests(
     assertTrue(Boolean(order), "order exists in MongoDB");
     assertEqual(order!.channel, "ONLINE", "channel");
     assertEqual(order!.status, "ORDER_PLACED", "status");
-    assertEqual(order!.paymentMethod, "PAY_ON_DELIVERY", "payment method");
-    assertEqual(order!.paymentStatus, "PENDING", "payment status");
+    assertEqual(order!.paymentMethod, "PAYPAL", "payment method");
+    assertEqual(order!.paymentStatus, "PAID", "payment status");
     assertEqual(order!.items.length, 3, "snapshot lines");
     const iphoneSnapshot = order!.items.find((item) => String(item.productId) === products.iphone)!;
     assertEqual(iphoneSnapshot.unitPriceInPaise, iPhonePrice, "snapshot price from DB");

@@ -9,6 +9,7 @@ import {
   customerNameSchema,
   deliveryAddressSchema,
   emailSchema,
+  objectIdSchema,
 } from "@/lib/validations/common";
 
 /**
@@ -92,6 +93,12 @@ export const resetPasswordSchema = z.object({
   confirmPassword: z.string(),
 }).refine((value) => value.password === value.confirmPassword, {
   path: ["confirmPassword"], message: "Passwords do not match.",
+});
+
+/** Staff action for enabling or disabling a storefront customer account. */
+export const customerAdminActionSchema = z.object({
+  customerId: objectIdSchema,
+  isActive: z.boolean(),
 });
 
 /** Field-level schemas reused by the account forms for instant feedback. */

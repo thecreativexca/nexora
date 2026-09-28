@@ -18,7 +18,7 @@ export interface StaffView {
 }
 
 /** Next step after successful password authentication. */
-export type StaffAuthNextStep = "COMPLETE" | "MFA_VERIFY" | "MFA_SETUP";
+export type StaffAuthNextStep = "COMPLETE" | "MFA_VERIFY";
 
 export interface StaffAuthResult {
   staff: StaffView;

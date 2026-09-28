@@ -226,7 +226,7 @@ export function CheckoutView({ customer, paypalClientId, currency }: { customer:
       <form
         onSubmit={handleSubmit}
         noValidate
-        className="space-y-6 rounded-xl border border-slate-200 bg-white p-5 sm:p-6"
+        className="space-y-6 rounded-2xl border border-slate-200/90 bg-white p-5 shadow-lg shadow-slate-900/5 sm:p-6"
       >
         <div>
           <h2 className="text-lg font-bold text-slate-900">
@@ -387,14 +387,14 @@ export function CheckoutView({ customer, paypalClientId, currency }: { customer:
             value={values.notes}
             onChange={(event) => handleChange("notes", event.target.value)}
             placeholder="Delivery instructions, landmark or preferred time"
-            className="mt-2 w-full rounded-lg border border-slate-300 p-3 text-sm text-slate-900 placeholder:text-slate-400"
+            className="mt-2 w-full rounded-xl border border-slate-300 bg-white p-3 text-sm text-slate-900 shadow-sm placeholder:text-slate-400"
           />
           {fieldErrors.notes ? (
             <p className="mt-1 text-xs font-medium text-rose-600">{fieldErrors.notes}</p>
           ) : null}
         </fieldset>
 
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+        <div className="rounded-xl border border-indigo-100 bg-indigo-50/70 p-4 text-sm text-indigo-900">
           <p className="font-semibold text-slate-900">
             Payment: PayPal
           </p>
@@ -414,7 +414,7 @@ export function CheckoutView({ customer, paypalClientId, currency }: { customer:
         </div>
       </form>
 
-      <aside className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
+      <aside className="space-y-4 rounded-2xl border border-slate-200/90 bg-white p-5 shadow-lg shadow-slate-900/5 sm:p-6 lg:sticky lg:top-40">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-bold text-slate-900">Order summary</h2>
           {isValidating ? <Spinner label="Checking availability" /> : null}

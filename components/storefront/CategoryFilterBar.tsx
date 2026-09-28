@@ -58,10 +58,10 @@ function FilterChip({
       href={href}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "inline-flex shrink-0 items-center rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
+        "inline-flex shrink-0 items-center rounded-full border px-3 py-1.5 text-sm font-semibold transition-colors",
         active
-          ? "border-slate-900 bg-slate-900 text-white"
-          : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100",
+          ? "border-indigo-600 bg-indigo-600 text-white shadow-sm"
+          : "border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700",
       )}
     >
       {children}

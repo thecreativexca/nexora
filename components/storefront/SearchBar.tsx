@@ -145,7 +145,7 @@ export function SearchBar({ className }: { className?: string }) {
               setActiveIndex(-1);
             }
           }}
-          className="h-11 w-full rounded-lg border border-slate-300 bg-slate-50 pl-10 pr-10 text-sm text-slate-900 placeholder:text-slate-500 focus:border-slate-900 focus:bg-white"
+          className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-10 text-sm text-slate-900 shadow-inner placeholder:text-slate-500 focus:border-indigo-500 focus:bg-white"
         />
         <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
           <SearchIcon className="h-4 w-4" />
@@ -162,7 +162,7 @@ export function SearchBar({ className }: { className?: string }) {
           id="nexora-search-suggestions"
           role="listbox"
           aria-label="Product suggestions"
-          className="absolute left-0 right-0 top-12 z-40 max-h-80 overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-xl"
+          className="absolute left-0 right-0 top-12 z-40 max-h-80 overflow-auto rounded-2xl border border-slate-200 bg-white py-1 shadow-2xl shadow-slate-900/10"
         >
           {suggestions.map((product, index) => (
             <li key={product.id}>
@@ -174,7 +174,7 @@ export function SearchBar({ className }: { className?: string }) {
                 onClick={() => setIsOpen(false)}
                 className={cn(
                   "flex items-center justify-between gap-3 px-3 py-2 text-sm",
-                  index === activeIndex ? "bg-slate-100" : "hover:bg-slate-50",
+                  index === activeIndex ? "bg-indigo-50" : "hover:bg-slate-50",
                 )}
               >
                 <span className="truncate font-medium text-slate-800">{product.name}</span>

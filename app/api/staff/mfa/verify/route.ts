@@ -2,15 +2,12 @@ import type { NextRequest } from "next/server";
 
 import { destroyMfaPendingCookie, getPendingStaffId } from "@/lib/auth/mfa-pending";
 import { createStaffSession } from "@/lib/auth/staff-session";
-import { AUDIT_ACTION } from "@/lib/constants/audit";
 import { STAFF_SESSION_TTL_MS, staffRoleRequiresMfa } from "@/lib/constants/staff";
 import { clientKey, staffMfaVerifyLimiter } from "@/lib/security/rate-limit";
-import { recordAudit } from "@/lib/services/audit.service";
-import { enableMfa, verifyPendingMfa } from "@/lib/services/mfa.service";
+import { verifyStaffLoginOtp } from "@/lib/services/staff-email-otp.service";
 import { getStaffViewById } from "@/lib/services/staff.service";
 import {
   ForbiddenError,
-  MfaInvalidError,
   MfaSetupRequiredError,
   TooManyRequestsError,
   UnauthenticatedError,
@@ -20,8 +17,8 @@ import { readJsonBody, toErrorResponse, toSuccessResponse } from "@/lib/utils/ht
 import { mfaVerifySchema } from "@/lib/validations/staff";
 
 /**
- * Completes MFA: only after a valid one-time code does the staff member
- * receive a real portal session. Invalid codes are throttled and audited.
+ * Completes two-step sign-in: only after the correct EMAIL code does the staff
+ * member receive a real portal session. Invalid codes are throttled + audited.
  */
 export async function POST(request: NextRequest) {
   const parsedBody = await readJsonBody(request, "POST /api/staff/mfa/verify invalid JSON");
@@ -49,32 +46,14 @@ export async function POST(request: NextRequest) {
       throw new TooManyRequestsError(undefined, decision.retryAfterSeconds);
     }
 
-    const valid = await verifyPendingMfa(staffId, parsed.data.code);
-    if (!valid) {
-      recordAudit({
-        actorStaffId: staffId,
-        action: AUDIT_ACTION.STAFF_MFA_FAILED,
-        targetStaffId: staffId,
-      });
-      throw new MfaInvalidError();
-    }
-
-    recordAudit({
-      actorStaffId: staffId,
-      action: AUDIT_ACTION.STAFF_MFA_VERIFIED,
-      targetStaffId: staffId,
-    });
-
-    if (!staff.mfaEnabled) {
-      await enableMfa(staffId);
-    }
+    await verifyStaffLoginOtp(staffId, parsed.data.code);
 
     await destroyMfaPendingCookie();
     // The session only exists after a verified code - mark it MFA-satisfied so
     // loadCurrentStaff will keep resolving this staff member.
     await createStaffSession(staffId, STAFF_SESSION_TTL_MS, true);
 
-    return toSuccessResponse({ ok: true, redirectTo: "/pos", mfaEnabled: true });
+    return toSuccessResponse({ ok: true, redirectTo: "/pos" });
   } catch (error) {
     return toErrorResponse(error, "POST /api/staff/mfa/verify failed");
   }

@@ -15,7 +15,7 @@ export function ErrorState({
   return (
     <div
       role="alert"
-      className="flex flex-col items-center justify-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-6 py-12 text-center"
+      className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white px-6 py-12 text-center shadow-sm"
     >
       <span className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 text-amber-700">
         <AlertIcon />

@@ -60,9 +60,10 @@ export default async function ProductsPage({ searchParams }: PageProps<"/product
 
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
+      <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">{heading}</h1>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-indigo-600">Nexora catalogue</p>
+          <h1 className="page-title mt-1 text-3xl font-bold text-slate-950">{heading}</h1>
           <p className="mt-1 text-sm text-slate-600">
             {result.total} {result.total === 1 ? "product" : "products"}
             {activeCategory ? ` in ${activeCategory.name}` : ""}
@@ -83,7 +84,7 @@ export default async function ProductsPage({ searchParams }: PageProps<"/product
               id="sort"
               name="sort"
               defaultValue={query.sort}
-              className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900"
+              className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm"
             >
               {CATALOG_SORTS.map((sort) => (
                 <option key={sort} value={sort}>

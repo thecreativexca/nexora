@@ -159,7 +159,7 @@ async function upsertDemoOrders(customerId: string): Promise<void> {
         $set: {
           channel: ORDER_CHANNEL.ONLINE,
           status: spec.status,
-          paymentMethod: PAYMENT_METHOD.PAY_ON_DELIVERY,
+          paymentMethod: PAYMENT_METHOD.PAYPAL,
           paymentStatus: spec.paymentStatus,
           customerId: new Types.ObjectId(customerId),
           customerName: "Demo Customer",

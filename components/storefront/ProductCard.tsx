@@ -17,7 +17,7 @@ export function ProductCard({
   const lowStock = !product.isService && product.stock > 0 && product.stock <= 3;
 
   return (
-    <article className="group flex h-full flex-col rounded-xl border border-slate-200 bg-white p-3 transition-shadow hover:shadow-md">
+    <article className="group flex h-full flex-col rounded-2xl border border-slate-200/90 bg-white p-3 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-indigo-200 hover:shadow-xl hover:shadow-slate-900/8">
       <Link href={`/products/${product.slug}`} className="block rounded-lg">
         <div className="relative">
           <ProductImage src={product.image} alt={product.name} priority={priority} />
@@ -27,7 +27,7 @@ export function ProductCard({
             </span>
           ) : null}
         </div>
-        <h3 className="mt-3 line-clamp-2 text-sm font-semibold text-slate-900 group-hover:underline">
+        <h3 className="mt-3 line-clamp-2 text-sm font-semibold text-slate-900 transition-colors group-hover:text-indigo-700">
           {product.name}
         </h3>
       </Link>

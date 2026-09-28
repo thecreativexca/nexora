@@ -37,6 +37,12 @@ export const POS_NAV_ITEMS: PosNavItem[] = [
     description: "Browse and update customer orders",
   },
   {
+    href: "/pos/customers",
+    label: "Customers",
+    permission: STAFF_PERMISSION.ACCESS_CUSTOMERS,
+    description: "Find customer accounts and order history",
+  },
+  {
     href: "/pos/inventory",
     label: "Inventory",
     permission: STAFF_PERMISSION.ACCESS_INVENTORY,

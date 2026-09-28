@@ -109,12 +109,8 @@ export const ORDER_STATUS_TONES: Record<OrderStatus, StatusTone> = {
   REFUNDED: "neutral",
 };
 
-/**
- * Central payment method history. PAY_ON_DELIVERY remains only so historical
- * orders deserialize correctly; new storefront orders use PAYPAL.
- */
+/** Central payment methods. Online checkout is prepaid through PayPal only. */
 export const PAYMENT_METHOD = {
-  PAY_ON_DELIVERY: "PAY_ON_DELIVERY",
   CASH: "CASH",
   CARD: "CARD",
   MOBILE: "MOBILE",
@@ -124,7 +120,6 @@ export const PAYMENT_METHOD = {
 } as const;
 export type PaymentMethod = (typeof PAYMENT_METHOD)[keyof typeof PAYMENT_METHOD];
 export const PAYMENT_METHOD_VALUES = [
-  PAYMENT_METHOD.PAY_ON_DELIVERY,
   PAYMENT_METHOD.CASH,
   PAYMENT_METHOD.CARD,
   PAYMENT_METHOD.MOBILE,
@@ -148,7 +143,6 @@ export const POS_PAYMENT_METHODS = [
 ] as const;
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
-  PAY_ON_DELIVERY: "Pay on delivery",
   CASH: "Cash",
   CARD: "Card",
   MOBILE: "Mobile",

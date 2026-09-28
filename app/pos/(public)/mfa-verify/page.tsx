@@ -17,13 +17,12 @@ export default async function MfaVerifyPage() {
 
   const staff = await getStaffViewById(staffId);
   if (!staff || !staffRoleRequiresMfa(staff.role)) redirect("/pos/login");
-  if (!staff.mfaEnabled) redirect("/pos/mfa/setup");
 
   return (
     <div>
       <h1 className="text-xl font-bold text-slate-900">Two-step verification</h1>
       <div className="mt-6">
-        <MfaVerifyForm />
+        <MfaVerifyForm email={staff.email} />
       </div>
     </div>
   );

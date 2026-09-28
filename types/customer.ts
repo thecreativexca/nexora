@@ -18,3 +18,18 @@ export interface CustomerView {
   lastLoginAt: string | null;
   createdAt: string;
 }
+
+/** Staff-safe customer row with aggregate order activity. */
+export interface CustomerAdminView extends CustomerView {
+  orderCount: number;
+  totalSpentInPaise: number;
+  lastOrderAt: string | null;
+}
+
+export interface CustomerAdminListResult {
+  customers: CustomerAdminView[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}

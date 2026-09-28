@@ -108,10 +108,9 @@ function toAuthResult(staff: LeanStaff): StaffAuthResult {
   if (!staffRoleRequiresMfa(staff.role)) {
     return { staff: view, nextStep: "COMPLETE" };
   }
-  return {
-    staff: view,
-    nextStep: staff.mfaEnabled ? "MFA_VERIFY" : "MFA_SETUP",
-  };
+  // Two-step sign-in is email-OTP based: every login for Manager / Super-Admin
+  // goes through a fresh code, so there is no enrolment step.
+  return { staff: view, nextStep: "MFA_VERIFY" };
 }
 
 /**

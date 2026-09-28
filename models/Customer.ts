@@ -59,6 +59,8 @@ const customerSchema = new Schema<CustomerDocument>(
 
 /** Backs the unique email constraint and login lookups. */
 customerSchema.index({ email: 1 }, { unique: true });
+/** Staff customer directory filters and newest-account sorting. */
+customerSchema.index({ isActive: 1, createdAt: -1 });
 
 export const Customer: Model<CustomerDocument> =
   (mongoose.models.Customer as Model<CustomerDocument> | undefined) ??

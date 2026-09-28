@@ -15,8 +15,9 @@ export default async function CheckoutPage() {
 
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <header className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Checkout</h1>
+      <header className="mb-8">
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-indigo-600">Secure payment</p>
+        <h1 className="page-title mt-1 text-3xl font-bold text-slate-950">Checkout</h1>
         <p className="mt-1 text-sm text-slate-600">
           {customer
             ? "Your details are prefilled - review them and pay securely with PayPal."

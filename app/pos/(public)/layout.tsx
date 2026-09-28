@@ -1,23 +1,24 @@
 import type { ReactNode } from "react";
 
 import Link from "next/link";
+import { Logo } from "@/components/common/Logo";
 
 /** Centered auth card used by the pre-sign-in POS pages. */
 export default function PosPublicLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-screen items-center justify-center px-4 py-10">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-950 px-4 py-10">
+      <div aria-hidden="true" className="absolute -left-32 -top-32 h-96 w-96 rounded-full bg-indigo-600/30 blur-3xl" />
+      <div aria-hidden="true" className="absolute -bottom-32 -right-24 h-80 w-80 rounded-full bg-cyan-500/20 blur-3xl" />
       <div className="w-full max-w-md">
-        <div className="mb-6 text-center">
-          <p className="text-sm font-bold uppercase tracking-widest text-slate-400">
-            Nexora
-          </p>
-          <p className="mt-1 text-xs font-medium text-slate-500">Staff portal</p>
+        <div className="relative mb-6 flex flex-col items-center text-center">
+          <Logo className="[&_span]:text-white" />
+          <p className="mt-3 text-xs font-semibold uppercase tracking-[0.2em] text-indigo-300">Staff portal</p>
         </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="relative rounded-3xl border border-white/10 bg-white p-6 shadow-2xl shadow-black/30 sm:p-8">
           {children}
         </div>
-        <p className="mt-6 text-center text-xs text-slate-400">
-          <Link href="/" className="hover:text-slate-600">
+        <p className="relative mt-6 text-center text-xs text-slate-400">
+          <Link href="/" className="font-medium hover:text-white">
             &larr; Back to the shop
           </Link>
         </p>

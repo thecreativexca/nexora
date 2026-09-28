@@ -5,6 +5,7 @@ import { Types } from "mongoose";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { connectDB } from "@/lib/db/mongodb";
 import { ensureRequestTime } from "@/lib/db/request-time";
+import { ORDER_STATUS } from "@/lib/constants/order";
 import { toDatabaseError } from "@/lib/services/service-errors";
 import {
   AccountDisabledError,
@@ -12,13 +13,20 @@ import {
   EmailTakenError,
   InvalidCredentialsError,
   ProfileUpdateFailedError,
+  NotFoundError,
   isAppError,
   isDuplicateKeyError,
 } from "@/lib/utils/errors";
 import { logger } from "@/lib/utils/logger";
 import { normalizeEmail, normalizePhone } from "@/lib/validations/common";
 import { Customer, type CustomerAddress } from "@/models/Customer";
-import type { CustomerView } from "@/types/customer";
+import { Order } from "@/models/Order";
+import { buildContainsRegExp, normalizeSearchTerm } from "@/lib/utils/search";
+import type {
+  CustomerAdminListResult,
+  CustomerAdminView,
+  CustomerView,
+} from "@/types/customer";
 
 interface LeanCustomer {
   _id: Types.ObjectId;
@@ -216,5 +224,112 @@ export async function updateCustomerProfile(
     if (isAppError(error)) throw error;
     logger.error("Customer profile update failed", error);
     throw new ProfileUpdateFailedError(undefined, error);
+  }
+}
+
+const CUSTOMER_DIRECTORY_PAGE_SIZE = 20;
+
+/**
+ * Staff customer directory with server-side search and compact order totals.
+ * Password hashes, OAuth identities and session data never enter this query.
+ */
+export async function listCustomersForStaff(input: {
+  search?: string;
+  status?: "all" | "active" | "inactive";
+  page?: number;
+} = {}): Promise<CustomerAdminListResult> {
+  await ensureDatabase();
+
+  const search = normalizeSearchTerm(input.search);
+  const status = input.status ?? "all";
+  const page = Math.max(1, Math.min(1000, Math.trunc(input.page ?? 1)));
+  const filter: Record<string, unknown> = {};
+
+  if (search) {
+    const matcher = buildContainsRegExp(search);
+    filter.$or = [{ name: matcher }, { email: matcher }, { phone: matcher }];
+  }
+  if (status === "active") filter.isActive = { $ne: false };
+  if (status === "inactive") filter.isActive = false;
+
+  try {
+    const total = await Customer.countDocuments(filter);
+    const totalPages = Math.max(1, Math.ceil(total / CUSTOMER_DIRECTORY_PAGE_SIZE));
+    const safePage = Math.min(page, totalPages);
+    const customers = await Customer.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((safePage - 1) * CUSTOMER_DIRECTORY_PAGE_SIZE)
+      .limit(CUSTOMER_DIRECTORY_PAGE_SIZE)
+      .lean<LeanCustomer[]>();
+
+    const ids = customers.map((customer) => customer._id);
+    const orderStats = ids.length === 0
+      ? []
+      : await Order.aggregate<{
+          _id: Types.ObjectId;
+          orderCount: number;
+          totalSpentInPaise: number;
+          lastOrderAt: Date | null;
+        }>([
+          {
+            $match: {
+              customerId: { $in: ids },
+              status: { $nin: [ORDER_STATUS.CANCELLED, ORDER_STATUS.REFUNDED] },
+            },
+          },
+          {
+            $group: {
+              _id: "$customerId",
+              orderCount: { $sum: 1 },
+              totalSpentInPaise: { $sum: "$totalInPaise" },
+              lastOrderAt: { $max: "$createdAt" },
+            },
+          },
+        ]);
+    const statsByCustomer = new Map(orderStats.map((row) => [String(row._id), row]));
+
+    const views: CustomerAdminView[] = customers.map((customer) => {
+      const stats = statsByCustomer.get(String(customer._id));
+      return {
+        ...toCustomerView(customer),
+        orderCount: stats?.orderCount ?? 0,
+        totalSpentInPaise: stats?.totalSpentInPaise ?? 0,
+        lastOrderAt: stats?.lastOrderAt ? new Date(stats.lastOrderAt).toISOString() : null,
+      };
+    });
+
+    return {
+      customers: views,
+      total,
+      page: safePage,
+      pageSize: CUSTOMER_DIRECTORY_PAGE_SIZE,
+      totalPages,
+    };
+  } catch (error) {
+    throw toDatabaseError(error);
+  }
+}
+
+/** Manager/Admin customer-access control. Existing sessions stop resolving immediately. */
+export async function setCustomerActive(
+  customerId: string,
+  isActive: boolean,
+): Promise<CustomerView> {
+  if (!Types.ObjectId.isValid(customerId)) {
+    throw new NotFoundError("That customer account could not be found.");
+  }
+
+  await ensureDatabase();
+  try {
+    const customer = await Customer.findByIdAndUpdate(
+      customerId,
+      { $set: { isActive } },
+      { new: true, runValidators: true },
+    ).lean<LeanCustomer | null>();
+    if (!customer) throw new NotFoundError("That customer account could not be found.");
+    return toCustomerView(customer);
+  } catch (error) {
+    if (isAppError(error)) throw error;
+    throw toDatabaseError(error);
   }
 }

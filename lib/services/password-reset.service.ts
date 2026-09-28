@@ -10,7 +10,6 @@ import { InvalidRequestError, TooManyRequestsError } from "@/lib/utils/errors";
 import { logger } from "@/lib/utils/logger";
 import { normalizeEmail } from "@/lib/validations/common";
 import { Customer } from "@/models/Customer";
-import { CustomerSession } from "@/models/CustomerSession";
 import { PasswordResetOTP } from "@/models/PasswordResetOTP";
 
 export const RESET_COOKIE = "nexora_password_reset";
@@ -49,11 +48,11 @@ export async function requestPasswordReset(emailInput: string, ipHash: string) {
   return { message: "If an account exists for this email, a verification code has been sent.", cooldownSeconds: 60, expiresInMinutes: 10 };
 }
 
-export async function verifyPasswordResetOtp(emailInput: string, otp: string) {
+export async function verifyPasswordResetOtp(emailInput: string, otp: string): Promise<{ token: string; customerId: string }> {
   await connectDB(); const email = normalizeEmail(emailInput); const record = await PasswordResetOTP.findOne({ email, usedAt: null }).sort({ createdAt: -1 });
   if (!record || record.expiresAt <= new Date() || record.attempts >= MAX_ATTEMPTS || !record.customerId) throw new InvalidRequestError("That code is invalid or expired.");
   if (!safeEqual(record.otpHash, hashOtp(email, otp))) { record.attempts += 1; if (record.attempts >= MAX_ATTEMPTS) record.usedAt = new Date(); await record.save(); throw new InvalidRequestError(record.attempts >= MAX_ATTEMPTS ? "Too many incorrect attempts. Request a new code." : "That code is invalid or expired."); }
-  const token = randomBytes(32).toString("base64url"); record.verifiedAt = new Date(); record.resetTokenHash = hashToken(token); record.resetTokenExpiresAt = new Date(Date.now() + RESET_TTL_MS); await record.save(); return token;
+  const token = randomBytes(32).toString("base64url"); record.verifiedAt = new Date(); record.resetTokenHash = hashToken(token); record.resetTokenExpiresAt = new Date(Date.now() + RESET_TTL_MS); await record.save(); return { token, customerId: String(record.customerId) };
 }
 
 export async function completePasswordReset(token: string, password: string) {
@@ -64,7 +63,6 @@ export async function completePasswordReset(token: string, password: string) {
     const claimed = await PasswordResetOTP.findOneAndUpdate({ _id: record._id, usedAt: null, resetTokenExpiresAt: { $gt: new Date() } }, { $set: { usedAt: new Date(), resetTokenHash: null } }, { session, returnDocument: "after" });
     if (!claimed) throw new InvalidRequestError("This reset authorization has already been used.");
     await Customer.updateOne({ _id: record.customerId, isActive: true }, { $set: { passwordHash } }, { session });
-    await CustomerSession.deleteMany({ customerId: record.customerId }, { session });
   }); } finally { await session.endSession(); }
   await recordAudit({ actorStaffId: null, action: AUDIT_ACTION.PASSWORD_RESET_COMPLETED, metadata: { customerId: String(record.customerId) } });
 }

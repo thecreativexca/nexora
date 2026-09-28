@@ -22,8 +22,8 @@ export function DashboardView({ staff }: { staff: StaffView }) {
   return (
     <div className="space-y-8">
       <section>
-        <p className="text-sm font-medium text-slate-500">Welcome back,</p>
-        <h1 className="mt-1 text-2xl font-bold text-slate-900">{staff.name}</h1>
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-indigo-600">Operations workspace</p>
+        <h1 className="page-title mt-1 text-3xl font-bold text-slate-950">Welcome back, {staff.name}</h1>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Badge tone="info">{STAFF_ROLE_LABELS[staff.role]}</Badge>
           <Badge tone={staffRoleRequiresMfa(staff.role) && !staff.mfaEnabled ? "danger" : "success"}>
@@ -41,9 +41,9 @@ export function DashboardView({ staff }: { staff: StaffView }) {
             <Link
               key={item.href}
               href={item.href}
-              className="rounded-xl border border-slate-200 bg-white p-5 transition-colors hover:border-slate-300 hover:bg-slate-50"
+              className="group rounded-2xl border border-slate-200/90 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-lg"
             >
-              <p className="font-semibold text-slate-900">{item.label}</p>
+              <p className="font-semibold text-slate-900 transition-colors group-hover:text-indigo-700">{item.label}</p>
               <p className="mt-1 text-sm text-slate-600">{item.description}</p>
             </Link>
           ))}
@@ -55,9 +55,9 @@ export function DashboardView({ staff }: { staff: StaffView }) {
           About this portal
         </h2>
         <p className="mt-2 text-sm leading-relaxed text-slate-600">
-          The register, inventory, orders and reports modules arrive in the next phase. The
-          dashboard, sign-in, two-step verification (MFA) and team access are fully
-          operational today.
+          Your workspace is tailored to your role. Cashiers can run the register and
+          support customers, while managers and administrators can also control inventory,
+          fulfilment, reports, customer access and the staff team.
         </p>
         {staff.role === STAFF_ROLE.CASHIER ? null : (
           <p className="mt-2 text-sm leading-relaxed text-slate-600">

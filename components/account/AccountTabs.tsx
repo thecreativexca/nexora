@@ -14,7 +14,7 @@ export function AccountTabs() {
   const pathname = usePathname();
 
   return (
-    <nav aria-label="Account sections" className="flex gap-1 overflow-x-auto border-b border-slate-200">
+    <nav aria-label="Account sections" className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
       {TABS.map((tab) => {
         const isActive = tab.exact ? pathname === tab.href : pathname.startsWith(tab.href);
         return (
@@ -23,10 +23,10 @@ export function AccountTabs() {
             href={tab.href}
             aria-current={isActive ? "page" : undefined}
             className={cn(
-              "shrink-0 whitespace-nowrap rounded-t-lg px-4 py-2.5 text-sm font-medium",
+              "shrink-0 whitespace-nowrap rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors",
               isActive
-                ? "border-b-2 border-slate-900 text-slate-900"
-                : "border-b-2 border-transparent text-slate-600 hover:text-slate-900",
+                ? "bg-indigo-600 text-white shadow-sm"
+                : "text-slate-600 hover:bg-indigo-50 hover:text-indigo-700",
             )}
           >
             {tab.label}

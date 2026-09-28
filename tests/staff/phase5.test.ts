@@ -294,7 +294,7 @@ async function createOnlineOrder(input: {
     orderNumber: input.orderNumber ?? fixtureOrderNumber(),
     channel: ORDER_CHANNEL.ONLINE,
     status: input.status ?? ORDER_STATUS.ORDER_PLACED,
-    paymentMethod: PAYMENT_METHOD.PAY_ON_DELIVERY,
+    paymentMethod: PAYMENT_METHOD.PAYPAL,
     paymentStatus: PAYMENT_STATUS.PAID,
     customerId: null,
     customerName: input.customerName ?? "Phase Five Customer",
@@ -545,7 +545,7 @@ async function runOrdersListTests(cashierJar: CookieJar): Promise<void> {
     const order = response.body.order as Record<string, unknown>;
     assertEqual(order.orderNumber, fixtures.onlineRefundOrder, "order number");
     assertEqual(order.channel, ORDER_CHANNEL.ONLINE, "channel");
-    assertEqual(order.paymentMethod, PAYMENT_METHOD.PAY_ON_DELIVERY, "payment method");
+    assertEqual(order.paymentMethod, PAYMENT_METHOD.PAYPAL, "payment method");
     assertEqual(order.paymentStatus, PAYMENT_STATUS.PAID, "payment status");
     assert((order.items as unknown[]).length >= 1, "item snapshots present");
     const address = order.deliveryAddress as Record<string, unknown>;

@@ -11,7 +11,7 @@ import { TextField } from "@/components/ui/TextField";
 import { AlertIcon } from "@/components/ui/icons";
 
 interface LoginResponse {
-  step: "COMPLETE" | "MFA_SETUP" | "MFA_VERIFY";
+  step: "COMPLETE" | "MFA_VERIFY";
   redirectTo: string;
 }
 

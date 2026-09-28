@@ -24,7 +24,7 @@ export function TextField({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={name} className="text-sm font-medium text-slate-800">
+      <label htmlFor={name} className="text-sm font-semibold text-slate-700">
         {label}
         {optional ? <span className="ml-1 text-slate-400">(optional)</span> : null}
       </label>
@@ -34,9 +34,9 @@ export function TextField({
         aria-invalid={error ? true : undefined}
         aria-describedby={cn(error ? errorId : undefined, hint ? hintId : undefined) || undefined}
         className={cn(
-          "h-11 w-full rounded-lg border bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400",
+          "h-11 w-full rounded-xl border bg-white px-3.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400",
           error ? "border-rose-400" : "border-slate-300",
-          "focus:border-slate-900 focus:ring-0",
+          "focus:border-indigo-500 focus:ring-0",
           className,
         )}
         {...rest}

@@ -20,7 +20,7 @@ export default async function PosLoginPage() {
   if (pendingStaffId) {
     const pending = await getStaffViewById(pendingStaffId);
     if (pending && staffRoleRequiresMfa(pending.role)) {
-      redirect(pending.mfaEnabled ? "/pos/mfa/verify" : "/pos/mfa/setup");
+      redirect("/pos/mfa-verify");
     }
   }
 
