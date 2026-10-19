@@ -2,22 +2,28 @@
 
 import { useState } from "react";
 
+import { PermissionsEditorDialog } from "@/components/pos/PermissionsEditorDialog";
 import { patchJson } from "@/components/pos/api";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { AlertIcon } from "@/components/ui/icons";
+import {
+  STAFF_ROLE,
+  type StaffPermission,
+  type StaffRole,
+} from "@/lib/constants/staff";
 
 interface TeamStaffUpdateResponse {
   staff: {
     id: string;
-    role: string;
+    role: StaffRole;
     isActive: boolean;
   };
 }
 
 /**
  * Per-row staff management controls. The server still enforces every rule
- * (Super-Admin targets, self-actions, Manager->Cashier only, role-change gate).
+ * (Admin targets, self-actions, Manager->Seller only, role-change gate).
  */
 export function TeamMemberActions({
   memberId,
@@ -26,20 +32,29 @@ export function TeamMemberActions({
   isActive,
   canChangeRole,
   canToggleActive,
+  canManagePermissions = false,
+  permissionGrants = [],
+  permissionDenies = [],
 }: {
   memberId: string;
   memberName: string;
-  memberRole: string;
+  memberRole: StaffRole;
   isActive: boolean;
   canChangeRole: boolean;
   canToggleActive: boolean;
+  canManagePermissions?: boolean;
+  permissionGrants?: StaffPermission[];
+  permissionDenies?: StaffPermission[];
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [currentRole, setCurrentRole] = useState(memberRole);
+  const [currentRole, setCurrentRole] = useState<StaffRole>(memberRole);
   const [currentActive, setCurrentActive] = useState(isActive);
+  const [showPermissionsModal, setShowPermissionsModal] = useState(false);
+  const [grants, setGrants] = useState<StaffPermission[]>(permissionGrants);
+  const [denies, setDenies] = useState<StaffPermission[]>(permissionDenies);
 
-  async function run(action: { isActive?: boolean; role?: "MANAGER" | "CASHIER" }) {
+  async function run(action: { isActive?: boolean; role?: StaffRole }) {
     if (busy) return;
 
     const actionDesc = action.role
@@ -77,22 +92,36 @@ export function TeamMemberActions({
     setBusy(false);
   }
 
+  const roleValue =
+    currentRole === STAFF_ROLE.CASHIER ? STAFF_ROLE.SELLER : currentRole;
+
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center justify-end gap-2">
       {canChangeRole && currentActive ? (
         <select
           aria-label={`Change role for ${memberName}`}
-          value={currentRole}
+          value={roleValue}
           disabled={busy}
-          onChange={(event) => void run({ role: event.target.value as "MANAGER" | "CASHIER" })}
-          className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-900"
+          onChange={(event) => void run({ role: event.target.value as StaffRole })}
+          className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-900 focus:border-indigo-500 focus:ring-indigo-500"
         >
-          <option value="MANAGER">Manager</option>
-          <option value="CASHIER">Cashier</option>
+          <option value={STAFF_ROLE.MANAGER}>Manager</option>
+          <option value={STAFF_ROLE.SELLER}>Seller / Biller</option>
         </select>
       ) : (
         <span className="text-xs text-slate-400">{currentRole}</span>
       )}
+
+      {canManagePermissions && currentActive ? (
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={busy}
+          onClick={() => setShowPermissionsModal(true)}
+        >
+          Permissions
+        </Button>
+      ) : null}
 
       {canToggleActive ? (
         <Button
@@ -110,6 +139,21 @@ export function TeamMemberActions({
         <span className="flex items-center gap-1 text-xs font-medium text-rose-600">
           <AlertIcon className="h-3.5 w-3.5" /> {error}
         </span>
+      ) : null}
+
+      {showPermissionsModal ? (
+        <PermissionsEditorDialog
+          memberId={memberId}
+          memberName={memberName}
+          memberRole={currentRole}
+          initialGrants={grants}
+          initialDenies={denies}
+          onClose={() => setShowPermissionsModal(false)}
+          onSaved={(newGrants, newDenies) => {
+            setGrants(newGrants);
+            setDenies(newDenies);
+          }}
+        />
       ) : null}
     </div>
   );

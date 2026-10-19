@@ -22,5 +22,13 @@ export default async function PosCustomersPage({
   const search = (params.q ?? "").trim().slice(0, 80);
   const result = await listCustomersForStaff({ search, status, page: Number.isFinite(page) ? page : 1 });
 
-  return <CustomersView role={staff.role} result={result} search={search} status={status} />;
+  return (
+    <CustomersView
+      role={staff.role}
+      result={result}
+      search={search}
+      status={status}
+      effectivePermissions={staff.effectivePermissions}
+    />
+  );
 }

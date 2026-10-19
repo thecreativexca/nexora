@@ -24,13 +24,6 @@ export type AppErrorCode =
   | "PROFILE_UPDATE_FAILED"
   | "FORBIDDEN"
   | "RATE_LIMITED"
-  | "INVITATION_NOT_FOUND"
-  | "INVITATION_EXPIRED"
-  | "INVITATION_USED"
-  | "INVITATION_EMAIL_MISMATCH"
-  | "MFA_REQUIRED"
-  | "MFA_INVALID"
-  | "MFA_SETUP_REQUIRED"
   | "STAFF_MANAGEMENT_FAILED"
   | "SKU_TAKEN"
   | "SLUG_TAKEN"
@@ -102,6 +95,9 @@ export class InvalidRequestError extends AppError {
   }
 }
 
+/** Semantic alias used by newer business-domain services. */
+export class BadRequestError extends InvalidRequestError {}
+
 export class NotFoundError extends AppError {
   constructor(message = "That record could not be found.") {
     super(message, { code: "NOT_FOUND", status: 404 });
@@ -164,7 +160,7 @@ export class ForbiddenError extends AppError {
   }
 }
 
-/** Application-level throttling (staff login, MFA, invitation checks). */
+/** Application-level throttling (staff login). */
 export class TooManyRequestsError extends AppError {
   constructor(
     message = "Too many attempts. Please wait a moment and try again.",
@@ -174,50 +170,6 @@ export class TooManyRequestsError extends AppError {
     this.retryAfterSeconds = retryAfterSeconds;
   }
   readonly retryAfterSeconds?: number;
-}
-
-/** The invitation code does not exist / could not be matched. */
-export class InvitationNotFoundError extends AppError {
-  constructor(message = "No invitation matches that code.") {
-    super(message, { code: "INVITATION_NOT_FOUND", status: 404 });
-  }
-}
-
-export class InvitationExpiredError extends AppError {
-  constructor(message = "This invitation has expired. Ask a manager for a new one.") {
-    super(message, { code: "INVITATION_EXPIRED", status: 410 });
-  }
-}
-
-export class InvitationUsedError extends AppError {
-  constructor(message = "This invitation has already been used.") {
-    super(message, { code: "INVITATION_USED", status: 409 });
-  }
-}
-
-export class InvitationEmailMismatchError extends AppError {
-  constructor(message = "This code was issued for a different email address.") {
-    super(message, { code: "INVITATION_EMAIL_MISMATCH", status: 422 });
-  }
-}
-
-/** The staff member must complete MFA before the portal session is granted. */
-export class MfaRequiredError extends AppError {
-  constructor(message = "Complete the two-step verification to continue.") {
-    super(message, { code: "MFA_REQUIRED", status: 403 });
-  }
-}
-
-export class MfaInvalidError extends AppError {
-  constructor(message = "That code is not valid. Check your authenticator and try again.") {
-    super(message, { code: "MFA_INVALID", status: 422 });
-  }
-}
-
-export class MfaSetupRequiredError extends AppError {
-  constructor(message = "Two-step verification must be set up before you continue.") {
-    super(message, { code: "MFA_SETUP_REQUIRED", status: 403 });
-  }
 }
 
 export class StaffManagementFailedError extends AppError {

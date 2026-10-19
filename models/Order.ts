@@ -42,28 +42,64 @@ export interface OrderItemSnapshot {
   quantity: number;
   unitPriceInPaise: number;
   lineTotalInPaise: number;
+  taxRate?: number;
+  taxInPaise?: number;
+  discountInPaise?: number;
+  unit?: string;
   isService: boolean;
+  returnedQuantity?: number;
 }
 
-/** Refund metadata foundation - the refund workflow ships in a later phase. */
+/** Offline refund record. Each refund is immutable once recorded. */
 export interface OrderRefund {
   amountInPaise: number;
   reason: string;
+  refundMethod: PaymentMethod;
   status: RefundStatus;
+  referenceNumber: string;
   processedByStaffId: Types.ObjectId | null;
   processedAt: Date | null;
+  notes: string;
   createdAt: Date;
   updatedAt: Date;
+}
+
+/** A single offline payment entry. Orders can have multiple payments (partial/split). */
+export interface OrderPaymentEntry {
+  paymentMethod: PaymentMethod;
+  amountInPaise: number;
+  referenceNumber: string;
+  paymentDate: Date;
+  verifiedByStaffId: Types.ObjectId | null;
+  verifiedByName: string;
+  notes: string;
+  createdAt: Date;
 }
 
 export interface OrderDocument {
   orderNumber: string;
   channel: OrderChannel;
   status: OrderStatus;
+  /** Primary/default payment method. For split payments, see paymentEntries. */
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
-  paypalOrderId: string | null;
-  paypalCaptureId: string | null;
+  /**
+   * Total amount paid (sum of all paymentEntries).
+   * Stored as integer paise for decimal-safe arithmetic.
+   */
+  amountPaidInPaise: number;
+  /** Cash change returned to customer on cash transactions. */
+  changeInPaise?: number;
+  /**
+   * Legacy PayPal order ID - read-only for historical records.
+   * @deprecated Use paymentEntries for new offline payments.
+   */
+  paypalOrderId?: string | null;
+  /**
+   * Legacy PayPal capture ID - read-only for historical records.
+   * @deprecated Use paymentEntries for new offline payments.
+   */
+  paypalCaptureId?: string | null;
   currency: string;
   customerId: Types.ObjectId | null;
   customerName: string;
@@ -77,6 +113,8 @@ export interface OrderDocument {
   totalInPaise: number;
   refundedTotalInPaise: number;
   refunds: OrderRefund[];
+  /** Offline payment entries (supports partial/split payments). */
+  paymentEntries: OrderPaymentEntry[];
   /** Client-provided key for POS sale idempotency; null for online orders. */
   idempotencyKey: string | null;
   notes: string;
@@ -108,7 +146,12 @@ const orderItemSchema = new Schema<OrderItemSnapshot>(
     quantity: positiveIntegerField(),
     unitPriceInPaise: paiseField(),
     lineTotalInPaise: paiseField(),
+    taxRate: { type: Number, default: 0 },
+    taxInPaise: paiseField({ required: false, default: 0 }),
+    discountInPaise: paiseField({ required: false, default: 0 }),
+    unit: { type: String, trim: true, default: "Piece" },
     isService: { type: Boolean, default: false },
+    returnedQuantity: { type: Number, default: 0 },
   },
   { _id: false },
 );
@@ -117,20 +160,50 @@ const refundSchema = new Schema<OrderRefund>(
   {
     amountInPaise: paiseField(),
     reason: { type: String, trim: true, default: "", maxlength: 500 },
+    refundMethod: {
+      type: String,
+      enum: PAYMENT_METHOD_VALUES,
+      default: PAYMENT_METHOD.CASH,
+      required: true,
+    },
     status: {
       type: String,
       enum: REFUND_STATUS_VALUES,
       default: REFUND_STATUS.REQUESTED,
       required: true,
     },
+    referenceNumber: { type: String, trim: true, default: "", maxlength: 100 },
     processedByStaffId: {
       type: Schema.Types.ObjectId,
       ref: STAFF_PROFILE_MODEL,
       default: null,
     },
     processedAt: { type: Date, default: null },
+    notes: { type: String, trim: true, default: "", maxlength: 500 },
   },
   { timestamps: true, versionKey: false },
+);
+
+const paymentEntrySchema = new Schema<OrderPaymentEntry>(
+  {
+    paymentMethod: {
+      type: String,
+      enum: PAYMENT_METHOD_VALUES,
+      required: true,
+    },
+    amountInPaise: paiseField(),
+    referenceNumber: { type: String, trim: true, default: "", maxlength: 100 },
+    paymentDate: { type: Date, required: true, default: Date.now },
+    verifiedByStaffId: {
+      type: Schema.Types.ObjectId,
+      ref: STAFF_PROFILE_MODEL,
+      default: null,
+    },
+    verifiedByName: { type: String, trim: true, default: "", maxlength: 120 },
+    notes: { type: String, trim: true, default: "", maxlength: 500 },
+    createdAt: { type: Date, default: Date.now },
+  },
+  { _id: true, versionKey: false },
 );
 
 const orderSchema = new Schema<OrderDocument>(
@@ -160,18 +233,23 @@ const orderSchema = new Schema<OrderDocument>(
       type: String,
       enum: PAYMENT_METHOD_VALUES,
       required: true,
-      default: PAYMENT_METHOD.PAYPAL,
+      default: PAYMENT_METHOD.CASH,
     },
     paymentStatus: {
       type: String,
       enum: PAYMENT_STATUS_VALUES,
       required: true,
-      default: PAYMENT_STATUS.PENDING,
+      default: PAYMENT_STATUS.UNPAID,
     },
-    paypalOrderId: { type: String, trim: true, default: null },
-    paypalCaptureId: { type: String, trim: true, default: null },
+    amountPaidInPaise: paiseField({ required: false, default: 0 }),
+    changeInPaise: paiseField({ required: false, default: 0 }),
+    // Omit legacy gateway identifiers on new offline orders. A sparse unique
+    // index still treats explicit `null` as an indexed value, which would make
+    // the second offline order fail with a duplicate-key error.
+    paypalOrderId: { type: String, trim: true },
+    paypalCaptureId: { type: String, trim: true },
     currency: { type: String, trim: true, uppercase: true, default: "INR", maxlength: 3 },
-    /** Reserved for Phase 2 customer accounts; guest orders leave it null. */
+    /** Reserved for customer accounts; guest orders leave it null. */
     customerId: {
       type: Schema.Types.ObjectId,
       ref: CUSTOMER_MODEL,
@@ -217,6 +295,7 @@ const orderSchema = new Schema<OrderDocument>(
     totalInPaise: paiseField(),
     refundedTotalInPaise: paiseField({ required: false, default: 0 }),
     refunds: { type: [refundSchema], default: [] },
+    paymentEntries: { type: [paymentEntrySchema], default: [] },
     /**
      * Unique client-supplied key (POS only) that makes a network retry replay
      * the existing sale instead of charging twice. Null for online orders.
@@ -253,6 +332,9 @@ orderSchema.index({ "items.productId": 1 });
 orderSchema.index({ placedByStaffId: 1, createdAt: -1 });
 /** Idempotent POS sale replays (Phase 4) filter by the client key. */
 orderSchema.index({ idempotencyKey: 1 }, { sparse: true, unique: true });
+/** Payment status queries for outstanding dues. */
+orderSchema.index({ paymentStatus: 1, createdAt: -1 });
+/** Legacy PayPal lookups - kept sparse so old records are still found. */
 orderSchema.index({ paypalOrderId: 1 }, { sparse: true, unique: true });
 orderSchema.index({ paypalCaptureId: 1 }, { sparse: true, unique: true });
 

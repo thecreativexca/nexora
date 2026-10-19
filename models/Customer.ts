@@ -2,25 +2,27 @@ import mongoose, { Schema, type Model } from "mongoose";
 
 import {
   addressSubSchema,
+  paiseField,
   type AddressFields,
 } from "@/models/schema-helpers";
 
 export type CustomerAddress = AddressFields;
 
 /**
- * Optional storefront customer account.
+ * Customer account for storefront or in-store POS.
  *
- * Guest checkout never touches this collection. A customer record exists only
- * when somebody chooses to register, and is linked to orders through the
- * optional `Order.customerId`.
+ * Linked to orders through optional `Order.customerId`.
  */
 export interface CustomerDocument {
   email: string;
-  /** bcrypt hash - never selected by default and never serialised. */
+  /** bcrypt hash - never selected by default and never serialised. Optional for walk-in/in-store profiles. */
   passwordHash?: string;
   name: string;
   phone: string;
   address: CustomerAddress | null;
+  notes?: string;
+  outstandingDueInPaise: number;
+  totalPurchasesInPaise: number;
   isActive: boolean;
   lastLoginAt: Date | null;
   createdAt: Date;
@@ -39,7 +41,6 @@ const customerSchema = new Schema<CustomerDocument>(
     passwordHash: {
       type: String,
       required: false,
-      /** Hidden unless a query explicitly asks for it (login only). */
       select: false,
     },
     name: {
@@ -49,8 +50,10 @@ const customerSchema = new Schema<CustomerDocument>(
       maxlength: 120,
     },
     phone: { type: String, trim: true, default: "", maxlength: 24 },
-    /** A single saved/default address for checkout prefill. */
     address: { type: addressSubSchema(), default: null },
+    notes: { type: String, trim: true, default: "", maxlength: 1000 },
+    outstandingDueInPaise: paiseField({ required: false, default: 0 }),
+    totalPurchasesInPaise: paiseField({ required: false, default: 0 }),
     isActive: { type: Boolean, default: true },
     lastLoginAt: { type: Date, default: null },
   },
@@ -61,6 +64,9 @@ const customerSchema = new Schema<CustomerDocument>(
 customerSchema.index({ email: 1 }, { unique: true });
 /** Staff customer directory filters and newest-account sorting. */
 customerSchema.index({ isActive: 1, createdAt: -1 });
+customerSchema.index({ phone: 1 });
+customerSchema.index({ outstandingDueInPaise: -1 });
+customerSchema.index({ totalPurchasesInPaise: -1 });
 
 export const Customer: Model<CustomerDocument> =
   (mongoose.models.Customer as Model<CustomerDocument> | undefined) ??

@@ -1,8 +1,8 @@
 import type { NextRequest } from "next/server";
 
 import { requirePermissionApi } from "@/lib/auth/staff-session";
-import { STAFF_PERMISSION } from "@/lib/constants/staff";
-import { changeStaffRole, setStaffActive } from "@/lib/services/staff.service";
+import { STAFF_PERMISSION, type StaffPermission } from "@/lib/constants/staff";
+import { changeStaffRole, setStaffActive, setStaffPermissions } from "@/lib/services/staff.service";
 import {
   InvalidRequestError,
   validationError,
@@ -15,11 +15,11 @@ interface RouteContext {
 }
 
 /**
- * Activate / deactivate an account or change its role.
+ * Activate / deactivate an account, change role, or configure permissions.
  *
  * Permission rules live in the service (off the client-controlled body):
  * nobody touches Super-Admin accounts, nobody acts on themselves, a Manager
- * only manages Cashier accounts, and only a Super-Admin may change roles.
+ * only manages Seller accounts, and only an Admin may change roles/permissions.
  */
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
   const parsedBody = await readJsonBody(request, "PATCH /api/staff/team/[staffId] invalid JSON");
@@ -44,6 +44,14 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     }
     if (parsed.data.role !== undefined) {
       updated = await changeStaffRole(actor, staffId, parsed.data.role);
+    }
+    if (parsed.data.permissionGrants !== undefined || parsed.data.permissionDenies !== undefined) {
+      updated = await setStaffPermissions(
+        actor,
+        staffId,
+        (parsed.data.permissionGrants ?? []) as StaffPermission[],
+        (parsed.data.permissionDenies ?? []) as StaffPermission[],
+      );
     }
 
     if (!updated) {

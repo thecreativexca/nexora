@@ -113,7 +113,7 @@ export function RegisterForm({ next }: { next: string }) {
 
   return (
     <form onSubmit={handleSubmit} noValidate className="space-y-4">
-      <SocialLoginButtons next={next} />
+      <SocialLoginButtons next={next} dividerLabel="or, create with email" />
       {formError ? (
         <div
           role="alert"

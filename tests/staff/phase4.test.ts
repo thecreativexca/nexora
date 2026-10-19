@@ -13,7 +13,6 @@
  * with slug/SKU uniqueness and targeted stock edits, and GridFS uploads.
  */
 import bcrypt from "bcryptjs";
-import { Secret, TOTP } from "otpauth";
 
 import { BCRYPT_ROUNDS } from "@/lib/constants/customer";
 import { STAFF_SESSION_COOKIE } from "@/lib/constants/staff";
@@ -66,15 +65,6 @@ function token(length = 6): string {
 
 function uniqueEmail(): string {
   return `${unique("staff")}@nexora.example`;
-}
-
-function codeForSecret(secret: string): string {
-  return new TOTP({
-    algorithm: "SHA1",
-    digits: 6,
-    period: 30,
-    secret: Secret.fromBase32(secret),
-  }).generate();
 }
 
 /* ---------------------------------------------------------------------------
@@ -187,9 +177,6 @@ async function insertStaff(input: {
     name: input.name,
     role: input.role,
     isActive: true,
-    mfaEnabled: false,
-    mfaSecretEncrypted: null,
-    mfaVerifiedAt: null,
     lastLoginAt: null,
     passwordChangedAt: new Date(),
     failedLoginCount: 0,
@@ -200,7 +187,7 @@ async function insertStaff(input: {
   return String(staff._id);
 }
 
-async function fullSignIn(email: string, wantsMfa: boolean): Promise<CookieJar> {
+async function fullSignIn(email: string): Promise<CookieJar> {
   const jar: CookieJar = {};
 
   const login = await api("/api/staff/login", {
@@ -209,18 +196,7 @@ async function fullSignIn(email: string, wantsMfa: boolean): Promise<CookieJar> 
     jar,
   });
   assertEqual(login.status, 200, "login status");
-  assertEqual(login.body.step as string, wantsMfa ? "MFA_SETUP" : "COMPLETE", "next step");
-
-  if (wantsMfa) {
-    const setup = await api("/api/staff/mfa/setup", { method: "POST", body: {}, jar });
-    assertEqual(setup.status, 200, "mfa setup status");
-    const verify = await api("/api/staff/mfa/verify", {
-      method: "POST",
-      body: { code: codeForSecret(setup.body.secret as string) },
-      jar,
-    });
-    assertEqual(verify.status, 200, "mfa verify status");
-  }
+  assertEqual(login.body.step as string, "COMPLETE", "next step");
 
   assert(hasSession(jar), "full session held");
   return jar;
@@ -732,11 +708,11 @@ async function main(): Promise<void> {
   try {
     const managerEmail = uniqueEmail();
     await insertStaff({ name: "Phase Four Manager", email: managerEmail, role: "MANAGER" });
-    const managerJar = await fullSignIn(managerEmail, true);
+    const managerJar = await fullSignIn(managerEmail);
 
     const cashierEmail = uniqueEmail();
     await insertStaff({ name: "Phase Four Cashier", email: cashierEmail, role: "CASHIER" });
-    const cashierJar = await fullSignIn(cashierEmail, false);
+    const cashierJar = await fullSignIn(cashierEmail);
 
     const register = await runRegisterTests(cashierJar);
     await runInventoryTests(cashierJar, managerJar, register.categoryId, register.physicalId);

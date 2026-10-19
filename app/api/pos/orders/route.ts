@@ -1,11 +1,11 @@
 import type { NextRequest } from "next/server";
 
 import { ORDER_CHANNEL, ORDERS_MAX_PAGE, ORDERS_MAX_PAGE_SIZE, ORDERS_PAGE_SIZE } from "@/lib/constants/order";
-import { requirePermissionApi } from "@/lib/auth/staff-session";
+import { requirePermissionApi, requireStaffApi } from "@/lib/auth/staff-session";
 import { STAFF_PERMISSION } from "@/lib/constants/staff";
 import { listStaffOrders } from "@/lib/services/staff-orders.service";
 import { toErrorResponse, toSuccessResponse } from "@/lib/utils/http";
-import { validationError } from "@/lib/utils/errors";
+import { ForbiddenError, validationError } from "@/lib/utils/errors";
 import { staffOrderListQuerySchema } from "@/lib/validations/staff-order";
 
 /**
@@ -16,13 +16,18 @@ import { staffOrderListQuerySchema } from "@/lib/validations/staff-order";
  * a hand-crafted `?limit=1000000` can never overload the server.
  */
 export async function GET(request: NextRequest) {
-  let staff: Awaited<ReturnType<typeof requirePermissionApi>>;
+  let staff: Awaited<ReturnType<typeof requireStaffApi>>;
   try {
-    staff = await requirePermissionApi(STAFF_PERMISSION.ACCESS_ORDERS);
+    staff = await requireStaffApi();
+    const canAccessOrders =
+      staff.effectivePermissions.includes(STAFF_PERMISSION.ACCESS_ORDERS) ||
+      staff.effectivePermissions.includes(STAFF_PERMISSION.ORDERS_VIEW_OWN);
+    if (!canAccessOrders) {
+      throw new ForbiddenError();
+    }
   } catch (error) {
     return toErrorResponse(error, "GET /api/pos/orders auth");
   }
-  void staff;
 
   const rawParams: Record<string, string> = {};
   for (const [key, value] of request.nextUrl.searchParams.entries()) {
@@ -57,6 +62,7 @@ export async function GET(request: NextRequest) {
       channel,
       status: parsed.data.status,
       search: parsed.data.search ?? "",
+      actor: staff,
     });
     return toSuccessResponse(result);
   } catch (error) {

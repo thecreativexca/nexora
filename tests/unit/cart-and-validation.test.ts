@@ -231,7 +231,7 @@ const validCheckout = {
 check("a valid guest checkout payload passes", () => {
   const result = checkoutSchema.safeParse(validCheckout);
   assertTrue(result.success, "parse success");
-  if (result.success) assertEqual(result.data.paymentMethod, "PAYPAL", "PayPal default");
+  if (result.success) assertEqual(result.data.paymentMethod, "CASH", "Offline cash default");
 });
 
 check("online checkout rejects historical payment-on-delivery", () => {

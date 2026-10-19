@@ -3,7 +3,12 @@ import Link from "next/link";
 import { CustomerAccountActions } from "@/components/pos/customers/CustomerAccountActions";
 import { Badge } from "@/components/ui/Badge";
 import { buttonClasses } from "@/components/ui/Button";
-import { STAFF_PERMISSION, staffHasPermission, type StaffRole } from "@/lib/constants/staff";
+import {
+  STAFF_PERMISSION,
+  staffHasPermission,
+  type StaffPermission,
+  type StaffRole,
+} from "@/lib/constants/staff";
 import { formatDate, formatDateTime, pluralize } from "@/lib/utils/format";
 import { formatMoney } from "@/lib/utils/money";
 import type { CustomerAdminListResult } from "@/types/customer";
@@ -21,13 +26,17 @@ export function CustomersView({
   result,
   search,
   status,
+  effectivePermissions,
 }: {
   role: StaffRole;
   result: CustomerAdminListResult;
   search: string;
   status: "all" | "active" | "inactive";
+  effectivePermissions?: StaffPermission[];
 }) {
-  const canManage = staffHasPermission(role, STAFF_PERMISSION.MANAGE_CUSTOMERS);
+  const canManage = effectivePermissions
+    ? effectivePermissions.includes(STAFF_PERMISSION.MANAGE_CUSTOMERS)
+    : staffHasPermission(role, STAFF_PERMISSION.MANAGE_CUSTOMERS);
 
   return (
     <div className="space-y-6">

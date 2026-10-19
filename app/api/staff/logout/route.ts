@@ -1,5 +1,4 @@
 import { AUDIT_ACTION } from "@/lib/constants/audit";
-import { destroyMfaPendingCookie } from "@/lib/auth/mfa-pending";
 import { destroyStaffSession, getCurrentStaff } from "@/lib/auth/staff-session";
 import { recordAudit } from "@/lib/services/audit.service";
 import { toErrorResponse, toSuccessResponse } from "@/lib/utils/http";
@@ -16,7 +15,6 @@ export async function POST() {
       });
     }
     await destroyStaffSession();
-    await destroyMfaPendingCookie();
     return toSuccessResponse({ ok: true, redirectTo: "/pos/login" });
   } catch (error) {
     return toErrorResponse(error, "POST /api/staff/logout failed");

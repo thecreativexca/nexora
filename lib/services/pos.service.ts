@@ -18,8 +18,12 @@ interface LeanPosProduct {
   _id: Types.ObjectId;
   name: string;
   sku: string;
+  barcode?: string;
   description?: string;
   priceInPaise: number;
+  mrpInPaise?: number;
+  taxRate?: number;
+  unit?: string;
   stock: number;
   isService?: boolean;
   isFeatured?: boolean;
@@ -28,7 +32,7 @@ interface LeanPosProduct {
 }
 
 const POS_PRODUCT_FIELDS =
-  "name slug sku description priceInPaise stock isService isFeatured image category";
+  "name slug sku barcode description priceInPaise mrpInPaise taxRate unit stock isService isFeatured image category";
 
 function toPosProduct(product: LeanPosProduct, categoryName: string): PosProduct {
   const isService = Boolean(product.isService);
@@ -36,7 +40,11 @@ function toPosProduct(product: LeanPosProduct, categoryName: string): PosProduct
     id: String(product._id),
     name: product.name,
     sku: product.sku,
+    barcode: product.barcode ?? "",
     priceInPaise: product.priceInPaise,
+    mrpInPaise: product.mrpInPaise ?? product.priceInPaise,
+    taxRate: product.taxRate ?? 0,
+    unit: product.unit ?? "Piece",
     stock: product.stock,
     isService,
     isFeatured: Boolean(product.isFeatured),
@@ -95,7 +103,12 @@ export async function listPosProducts(
     const term = normalizeSearchTerm(input.search);
     if (term) {
       const pattern = buildContainsRegExp(term);
-      filter.$or = [{ name: pattern }, { sku: pattern }, { description: pattern }];
+      filter.$or = [
+        { name: pattern },
+        { sku: pattern },
+        { barcode: pattern },
+        { description: pattern },
+      ];
     }
 
     const [documents, total] = await Promise.all([

@@ -24,10 +24,11 @@ import {
 import { connectDB } from "@/lib/db/mongodb";
 import { ensureRequestTime } from "@/lib/db/request-time";
 import { recordAudit } from "@/lib/services/audit.service";
-import { refundPayPalCapture } from "@/lib/payments/paypal";
+import { STAFF_PERMISSION } from "@/lib/constants/staff";
 import { toDatabaseError } from "@/lib/services/service-errors";
 import {
   AlreadyRefundedError,
+  ForbiddenError,
   InvalidOrderTransitionError,
   InvalidRequestError,
   NotFoundError,
@@ -99,6 +100,8 @@ export interface LeanOrderRecord {
   discountInPaise?: number;
   taxInPaise?: number;
   totalInPaise: number;
+  amountPaidInPaise?: number;
+  changeInPaise?: number;
   refundedTotalInPaise?: number;
   refunds?: LeanRefundRecord[];
   notes?: string;
@@ -196,12 +199,18 @@ function toStaffOrderDetail(
       quantity: item.quantity,
       unitPriceInPaise: item.unitPriceInPaise,
       lineTotalInPaise: item.lineTotalInPaise,
+      taxRate: item.taxRate ?? 0,
+      taxInPaise: item.taxInPaise ?? 0,
+      discountInPaise: item.discountInPaise ?? 0,
+      unit: item.unit ?? "Piece",
       isService: Boolean(item.isService),
     })),
     subtotalInPaise: order.subtotalInPaise,
     discountInPaise: order.discountInPaise ?? 0,
     taxInPaise: order.taxInPaise ?? 0,
     totalInPaise: order.totalInPaise,
+    amountPaidInPaise: order.amountPaidInPaise ?? order.totalInPaise,
+    changeInPaise: order.changeInPaise ?? 0,
     itemCount: itemCountOf(order.items),
     notes: order.notes ?? "",
     placedById: order.placedByStaffId ? String(order.placedByStaffId) : null,
@@ -253,6 +262,7 @@ export interface StaffOrderListInput {
   channel?: OrderChannel;
   status?: OrderStatus;
   search: string;
+  actor?: StaffView;
 }
 
 export async function listStaffOrders(input: StaffOrderListInput): Promise<StaffOrderListResult> {
@@ -267,6 +277,15 @@ export async function listStaffOrders(input: StaffOrderListInput): Promise<Staff
   const filter: Record<string, unknown> = {};
   if (input.channel) filter.channel = input.channel;
   if (input.status) filter.status = input.status;
+
+  // Scope to own orders if the actor only holds ORDERS_VIEW_OWN and not ACCESS_ORDERS
+  if (input.actor) {
+    const hasGlobal = input.actor.effectivePermissions.includes(STAFF_PERMISSION.ACCESS_ORDERS);
+    const hasOwn = input.actor.effectivePermissions.includes(STAFF_PERMISSION.ORDERS_VIEW_OWN);
+    if (!hasGlobal && hasOwn) {
+      filter.placedByStaffId = new Types.ObjectId(input.actor.id);
+    }
+  }
 
   const term = normalizeSearchTerm(input.search);
   if (term) {
@@ -298,7 +317,10 @@ export async function listStaffOrders(input: StaffOrderListInput): Promise<Staff
   }
 }
 
-export async function getStaffOrderDetail(orderNumber: string): Promise<StaffOrderDetail | null> {
+export async function getStaffOrderDetail(
+  orderNumber: string,
+  actor?: StaffView,
+): Promise<StaffOrderDetail | null> {
   const normalized = assertWellFormedOrderNumber(orderNumber);
 
   await ensureRequestTime();
@@ -308,9 +330,22 @@ export async function getStaffOrderDetail(orderNumber: string): Promise<StaffOrd
     const order = await Order.findOne({ orderNumber: normalized })
       .lean<LeanOrderRecord | null>();
     if (!order) return null;
+
+    // Check ownership if actor only has ORDERS_VIEW_OWN
+    if (actor) {
+      const hasGlobal = actor.effectivePermissions.includes(STAFF_PERMISSION.ACCESS_ORDERS);
+      const hasOwn = actor.effectivePermissions.includes(STAFF_PERMISSION.ORDERS_VIEW_OWN);
+      if (!hasGlobal && hasOwn) {
+        if (!order.placedByStaffId || String(order.placedByStaffId) !== actor.id) {
+          throw new ForbiddenError("You are only authorized to view your own sales.");
+        }
+      }
+    }
+
     const staffNames = await loadStaffNameMap([order]);
     return toStaffOrderDetail(order, staffNames);
   } catch (error) {
+    if (isAppError(error)) throw error;
     throw toDatabaseError(error);
   }
 }
@@ -416,6 +451,7 @@ export async function refundStaffOrder(
   orderNumber: string,
   reason: string,
   staff: StaffView,
+  action: "issue" | "request" | "approve" | "reject" = "issue",
 ): Promise<{ order: StaffOrderDetail; restoredItems: RefundRestoreLine[]; missingProducts: RefundRestoreLine[] }> {
   const normalized = assertWellFormedOrderNumber(orderNumber);
   const trimmedReason = reason.trim();
@@ -428,18 +464,103 @@ export async function refundStaffOrder(
     throw toDatabaseError(error);
   }
 
-  const preflight = await Order.findOne({ orderNumber: normalized }).select("status refundedTotalInPaise refunds paymentMethod paypalCaptureId").lean<LeanOrderRecord | null>();
+  const preflight = await Order.findOne({ orderNumber: normalized }).select("status totalInPaise refundedTotalInPaise refunds paymentMethod paypalCaptureId").lean<LeanOrderRecord | null>();
   if (!preflight) throw new NotFoundError("No order matches that number.");
   if (isRefundedOrder(preflight)) throw new AlreadyRefundedError();
-  if (preflight.paymentMethod === PAYMENT_METHOD.PAYPAL) {
-    if (!preflight.paypalCaptureId) throw new OrderRefundFailedError("This PayPal order has no capture reference and requires reconciliation.");
-    try {
-      const providerRefund = await refundPayPalCapture(preflight.paypalCaptureId, `refund-${String(preflight._id)}`);
-      if (providerRefund.status !== "COMPLETED") throw new Error(`PayPal refund status ${providerRefund.status}`);
-    } catch (error) {
-      logger.error("PayPal refund was not confirmed; Nexora order left unchanged", error, { orderNumber: normalized });
-      throw new OrderRefundFailedError("PayPal did not confirm the refund. The Nexora order and inventory were left unchanged; retry safely or reconcile in PayPal.");
+
+  const canDirectRefund =
+    staff.effectivePermissions.includes(STAFF_PERMISSION.ISSUE_REFUND) ||
+    staff.effectivePermissions.includes(STAFF_PERMISSION.PAYMENTS_REFUND_APPROVE);
+  const canRequestRefund =
+    staff.effectivePermissions.includes(STAFF_PERMISSION.PAYMENTS_REFUND_REQUEST);
+
+  if (!canDirectRefund && !canRequestRefund) {
+    throw new ForbiddenError("You are not authorized to issue or request refunds.");
+  }
+
+  // Handle rejection of a pending refund request
+  if (action === "reject") {
+    if (!canDirectRefund) {
+      throw new ForbiddenError("You are not authorized to reject refund requests.");
     }
+
+    const updated = await Order.findOneAndUpdate(
+      { orderNumber: normalized, "refunds.status": REFUND_STATUS.REQUESTED },
+      {
+        $set: {
+          "refunds.$.status": REFUND_STATUS.REJECTED,
+          "refunds.$.notes": trimmedReason,
+        },
+      },
+      { returnDocument: "after" },
+    ).lean<LeanOrderRecord | null>();
+
+    if (!updated) {
+      throw new InvalidRequestError("No pending refund request found to reject.");
+    }
+
+    await recordAudit({
+      actorStaffId: staff.id,
+      actorRole: staff.role,
+      action: AUDIT_ACTION.REFUND_REJECTED,
+      resource: "Order",
+      resourceId: String(updated._id),
+      metadata: { orderNumber: normalized, reason: trimmedReason },
+    });
+
+    const staffNames = await loadStaffNameMap([updated]);
+    return {
+      order: toStaffOrderDetail(updated, staffNames),
+      restoredItems: [],
+      missingProducts: [],
+    };
+  }
+
+  // Handle creating a refund request (for staff without direct issue permissions)
+  if (action === "request" || (!canDirectRefund && canRequestRefund)) {
+    const updated = await Order.findOneAndUpdate(
+      { orderNumber: normalized },
+      {
+        $push: {
+          refunds: {
+            amountInPaise: preflight.totalInPaise,
+            reason: trimmedReason,
+            status: REFUND_STATUS.REQUESTED,
+            processedByStaffId: new Types.ObjectId(staff.id),
+            processedAt: new Date(),
+          },
+        },
+      },
+      { returnDocument: "after" },
+    ).lean<LeanOrderRecord | null>();
+
+    if (!updated) throw new NotFoundError("No order matches that number.");
+
+    await recordAudit({
+      actorStaffId: staff.id,
+      actorRole: staff.role,
+      action: AUDIT_ACTION.REFUND_REQUESTED,
+      resource: "Order",
+      resourceId: String(updated._id),
+      metadata: {
+        orderNumber: normalized,
+        amountInPaise: preflight.totalInPaise,
+        reason: trimmedReason,
+      },
+    });
+
+    const staffNames = await loadStaffNameMap([updated]);
+    return {
+      order: toStaffOrderDetail(updated, staffNames),
+      restoredItems: [],
+      missingProducts: [],
+    };
+  }
+
+  if (preflight.paymentMethod === PAYMENT_METHOD.PAYPAL) {
+    throw new InvalidRequestError(
+      "Historical PayPal orders must be reconciled outside Nexora. No online gateway request was made.",
+    );
   }
 
   const session = await mongoose.startSession();
@@ -526,10 +647,6 @@ export async function refundStaffOrder(
         missingProducts: outcome.missingProducts,
       },
     });
-
-    if (outcome.order.paymentMethod === PAYMENT_METHOD.PAYPAL) {
-      await recordAudit({ actorStaffId: staff.id, action: AUDIT_ACTION.PAYPAL_REFUND_COMPLETED, metadata: { orderNumber: normalized, paypalCaptureId: outcome.order.paypalCaptureId } });
-    }
 
     if (outcome.missingProducts.length > 0) {
       logger.warn("Refund referenced products that no longer exist - stock not restored for them", {

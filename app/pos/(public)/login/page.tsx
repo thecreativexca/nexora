@@ -1,11 +1,8 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
-import { getPendingStaffId } from "@/lib/auth/mfa-pending";
 import { getCurrentStaff } from "@/lib/auth/staff-session";
 import { StaffLoginForm } from "@/components/pos/StaffLoginForm";
-import { staffRoleRequiresMfa } from "@/lib/constants/staff";
-import { getStaffViewById } from "@/lib/services/staff.service";
 
 export const metadata: Metadata = {
   title: "Staff sign in",
@@ -15,14 +12,6 @@ export const metadata: Metadata = {
 export default async function PosLoginPage() {
   const staff = await getCurrentStaff();
   if (staff) redirect("/pos");
-
-  const pendingStaffId = await getPendingStaffId();
-  if (pendingStaffId) {
-    const pending = await getStaffViewById(pendingStaffId);
-    if (pending && staffRoleRequiresMfa(pending.role)) {
-      redirect("/pos/mfa-verify");
-    }
-  }
 
   return (
     <div>

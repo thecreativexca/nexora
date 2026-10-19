@@ -6,13 +6,17 @@ import { STAFF_PROFILE_MODEL } from "@/lib/constants/staff";
 /**
  * Security/admin audit trail (Phase 3 foundation).
  *
- * Only safe, non-secret metadata is stored. Never write passwords, MFA
- * secrets, session tokens or full invitation codes to this collection.
+ * Only safe, non-secret metadata is stored. Never write passwords,
+ * secrets or session tokens to this collection.
  */
 export interface AuditLogDocument {
   actorStaffId?: Types.ObjectId | null;
+  actorRole?: string | null;
   action: AuditActionValue;
   targetStaffId?: Types.ObjectId | null;
+  resource?: string | null;
+  resourceId?: string | null;
+  storeId?: string | null;
   metadata: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
@@ -27,6 +31,7 @@ const auditLogSchema = new Schema<AuditLogDocument>(
       ref: STAFF_PROFILE_MODEL,
       default: null,
     },
+    actorRole: { type: String, default: null },
     action: {
       type: String,
       enum: AUDIT_ACTION_VALUES,
@@ -37,6 +42,9 @@ const auditLogSchema = new Schema<AuditLogDocument>(
       ref: STAFF_PROFILE_MODEL,
       default: null,
     },
+    resource: { type: String, default: null },
+    resourceId: { type: String, default: null },
+    storeId: { type: String, default: null },
     metadata: { type: Schema.Types.Mixed, default: {} },
   },
   { timestamps: true, versionKey: false },

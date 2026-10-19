@@ -92,17 +92,3 @@ export const staffLoginLimiter = createInMemoryRateLimiter({
   max: 10,
   blockMs: 15 * 60 * 1000,
 });
-
-/** MFA verification: 8 attempts per 10 minutes, then a 10 min block. */
-export const staffMfaVerifyLimiter = createInMemoryRateLimiter({
-  windowMs: 10 * 60 * 1000,
-  max: 8,
-  blockMs: 10 * 60 * 1000,
-});
-
-/** Invitation check/accept: 25 attempts per 15 minutes. */
-export const invitationLimiter = createInMemoryRateLimiter({
-  windowMs: 15 * 60 * 1000,
-  max: 25,
-  blockMs: 15 * 60 * 1000,
-});

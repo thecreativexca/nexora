@@ -8,9 +8,15 @@ export interface ProductDocument {
   description: string;
   priceInPaise: number;
   costInPaise: number;
+  mrpInPaise: number;
+  taxRate: number;
+  unit: string;
+  minStockThreshold: number;
   sku: string;
+  barcode?: string;
   stock: number;
   category: Types.ObjectId;
+  supplier?: Types.ObjectId | null;
   image: string;
   images: string[];
   isActive: boolean;
@@ -39,6 +45,13 @@ const productSchema = new Schema<ProductDocument>(
     description: { type: String, trim: true, default: "", maxlength: 2000 },
     priceInPaise: paiseField(),
     costInPaise: paiseField({ required: false, default: 0 }),
+    mrpInPaise: paiseField({ required: false, default: 0 }),
+    /** Tax rate percentage (e.g. 0, 5, 12, 18, 28) */
+    taxRate: { type: Number, default: 0, min: 0, max: 100 },
+    /** Unit of measurement (Piece, Box, Pack, Kg, Gram, Liter, Meter) */
+    unit: { type: String, trim: true, default: "Piece", maxlength: 30 },
+    /** Low stock alert threshold */
+    minStockThreshold: nonNegativeIntegerField({ default: 5 }),
     sku: {
       type: String,
       required: [true, "SKU is required."],
@@ -47,16 +60,26 @@ const productSchema = new Schema<ProductDocument>(
       unique: true,
       maxlength: 40,
     },
+    /** Barcode for hardware scanner / fast checkout (sparse unique) */
+    barcode: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      maxlength: 60,
+    },
     /**
-     * Available physical inventory. A PayPal reservation atomically decrements
-     * this value and restores it on cancellation/expiry. POS therefore sees the
-     * same availability and cannot race an online checkout.
+     * Available physical inventory.
      */
     stock: nonNegativeIntegerField({ default: 0 }),
     category: {
       type: Schema.Types.ObjectId,
       ref: "Category",
       required: [true, "Product category is required."],
+    },
+    supplier: {
+      type: Schema.Types.ObjectId,
+      ref: "Supplier",
+      default: null,
     },
     image: { type: String, trim: true, default: "" },
     images: { type: [String], default: [] },
@@ -78,6 +101,10 @@ productSchema.index({ isActive: 1, category: 1, createdAt: -1 });
 productSchema.index({ isActive: 1, isFeatured: 1, createdAt: -1 });
 /** Price sorting / price range filters. */
 productSchema.index({ isActive: 1, priceInPaise: 1 });
+/** Barcode lookup index. */
+productSchema.index({ barcode: 1 }, { unique: true, sparse: true });
+/** Low stock query index. */
+productSchema.index({ isActive: 1, isService: 1, stock: 1, minStockThreshold: 1 });
 
 export const Product: Model<ProductDocument> =
   (mongoose.models.Product as Model<ProductDocument> | undefined) ??

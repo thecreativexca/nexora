@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
@@ -11,7 +10,6 @@ import { TextField } from "@/components/ui/TextField";
 import { AlertIcon } from "@/components/ui/icons";
 
 interface LoginResponse {
-  step: "COMPLETE" | "MFA_VERIFY";
   redirectTo: string;
 }
 
@@ -94,13 +92,6 @@ export function StaffLoginForm() {
           "Sign in"
         )}
       </Button>
-
-      <p className="text-center text-sm text-slate-600">
-        Were you invited?{" "}
-        <Link href="/pos/join" className="font-semibold text-slate-900 underline">
-          Join with a code
-        </Link>
-      </p>
     </form>
   );
 }

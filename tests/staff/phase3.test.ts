@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Phase 3 - staff portal integration tests.
  *
  * Requires:
@@ -8,21 +8,18 @@
  * Run with: npm run test:phase3
  *
  * Covers the staff access contract end to end over real HTTP: generic login
- * failures, account lockout + rate limiting, mandatory TOTP/MFA (setup and
- * verify), the invitation lifecycle (create -> check -> accept, replay
- * prevention, expiry), team management permissions, session revocation on
- * deactivation, and proof that secrets are never stored in the clear.
+ * failures, account lockout + rate limiting, immediate session issuance for
+ * every staff role, direct team creation with an initial password, team
+ * management permissions, session revocation on deactivation, and proof that
+ * secrets are never stored in the clear.
  */
 import bcrypt from "bcryptjs";
-import { createHash } from "node:crypto";
 import { Types } from "mongoose";
-import { Secret, TOTP } from "otpauth";
 
 import { BCRYPT_ROUNDS } from "@/lib/constants/customer";
-import { STAFF_SESSION_COOKIE, STAFF_MFA_PENDING_COOKIE } from "@/lib/constants/staff";
+import { STAFF_SESSION_COOKIE } from "@/lib/constants/staff";
 import { connectDB, disconnectDB } from "@/lib/db/mongodb";
 import { AuditLog } from "@/models/AuditLog";
-import { StaffInvitation } from "@/models/StaffInvitation";
 import { StaffProfile } from "@/models/StaffProfile";
 import { StaffSession } from "@/models/StaffSession";
 import { loadEnvFiles } from "@/scripts/load-env";
@@ -60,20 +57,6 @@ function uniqueEmail(label: string): string {
   const email = `pos-${label}-${Date.now()}-${Math.floor(Math.random() * 1e4)}@nexora.example`;
   createdStaffEmails.push(email);
   return email;
-}
-
-function sha256Hex(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
-}
-
-/** Full 6-digit TOTP code for a plaintext base32 secret. */
-function totpCode(secret: string): string {
-  return new TOTP({
-    algorithm: "SHA1",
-    digits: 6,
-    period: 30,
-    secret: Secret.fromBase32(secret),
-  }).generate();
 }
 
 /* ---------------------------------------------------------------------------
@@ -160,10 +143,6 @@ function hasSession(jar: CookieJar): boolean {
   return Boolean(jar[STAFF_SESSION_COOKIE]);
 }
 
-function hasPending(jar: CookieJar): boolean {
-  return Boolean(jar[STAFF_MFA_PENDING_COOKIE]);
-}
-
 /* ---------------------------------------------------------------------------
  * Fixtures (created directly so tests stay self-contained)
  * ------------------------------------------------------------------------- */
@@ -173,8 +152,6 @@ async function insertStaff(input: {
   email: string;
   role: "SUPER_ADMIN" | "MANAGER" | "CASHIER";
   isActive?: boolean;
-  mfaEnabled?: boolean;
-  mfaSecretEncrypted?: string | null;
 }): Promise<Types.ObjectId> {
   const passwordHash = await bcrypt.hash(PASSWORD, BCRYPT_ROUNDS);
   const staff = await StaffProfile.create({
@@ -183,9 +160,6 @@ async function insertStaff(input: {
     name: input.name,
     role: input.role,
     isActive: input.isActive ?? true,
-    mfaEnabled: input.mfaEnabled ?? false,
-    mfaSecretEncrypted: input.mfaSecretEncrypted ?? null,
-    mfaVerifiedAt: null,
     lastLoginAt: null,
     passwordChangedAt: new Date(),
     failedLoginCount: 0,
@@ -200,14 +174,8 @@ async function staffDoc(email: string) {
   return StaffProfile.findOne({ email }).lean();
 }
 
-/**
- * Logs in and completes ANY required MFA, returning a real portal session.
- * `expectStep` verifies the intermediate hand-offs for the raw login call.
- */
-async function fullSignIn(
-  email: string,
-  expectStep: "COMPLETE" | "MFA_SETUP" | "MFA_VERIFY",
-): Promise<{ jar: CookieJar; role: string; secret?: string }> {
+/** Signs in over HTTP and returns the cookie jar holding a real portal session. */
+async function fullSignIn(email: string): Promise<{ jar: CookieJar; role: string }> {
   const jar: CookieJar = {};
 
   const login = await api("/api/staff/login", {
@@ -216,34 +184,10 @@ async function fullSignIn(
     jar,
   });
   assertEqual(login.status, 200, "login status");
-  assertEqual(login.body.step as string, expectStep, "login next step");
+  assertEqual(login.body.step as string, "COMPLETE", "login next step");
+  assert(hasSession(jar), "session issued immediately");
 
-  if (expectStep === "COMPLETE") {
-    assert(hasSession(jar), "cashier session issued immediately");
-    return { jar, role: (await staffDoc(email))?.role ?? "" };
-  }
-
-  assert(!hasSession(jar), "no session before MFA completes");
-  assert(hasPending(jar), "pending MFA cookie set after password step");
-
-  const setup = await api("/api/staff/mfa/setup", { method: "POST", body: {}, jar });
-  assertEqual(setup.status, 200, "mfa setup status");
-  const secret = setup.body.secret as string;
-  assert(await verifyMfa(jar, secret), "MFA verify completes");
-  return { jar, role: (await staffDoc(email))?.role ?? "", secret };
-}
-
-/** Completes the MFA verify step using a correctly generated code. */
-async function verifyMfa(jar: CookieJar, secret: string): Promise<boolean> {
-  const result = await api("/api/staff/mfa/verify", {
-    method: "POST",
-    body: { code: totpCode(secret) },
-    jar,
-  });
-  if (result.status !== 200) return false;
-  assert(!hasPending(jar), "pending cookie cleared after MFA");
-  assert(hasSession(jar), "full session issued after MFA");
-  return true;
+  return { jar, role: (await staffDoc(email))?.role ?? "" };
 }
 
 /* ---------------------------------------------------------------------------
@@ -364,457 +308,234 @@ async function runAuthTests(): Promise<void> {
 async function establishSuperAdmin(): Promise<CookieJar> {
   const email = uniqueEmail("superadmin");
   await insertStaff({ name: "Test Super Admin", email, role: "SUPER_ADMIN" });
-  const result = await fullSignIn(email, "MFA_SETUP");
+  const result = await fullSignIn(email);
   return result.jar;
 }
 
 async function establishManager(): Promise<CookieJar> {
   const email = uniqueEmail("manager");
   await insertStaff({ name: "Test Manager", email, role: "MANAGER" });
-  const result = await fullSignIn(email, "MFA_SETUP");
+  const result = await fullSignIn(email);
   return result.jar;
 }
 
 async function establishCashier(): Promise<CookieJar> {
   const email = uniqueEmail("cashier");
   await insertStaff({ name: "Test Cashier", email, role: "CASHIER" });
-  return (await fullSignIn(email, "COMPLETE")).jar;
+  return (await fullSignIn(email)).jar;
 }
 
-async function runMfaTests(): Promise<void> {
-  console.log("\nMFA");
+async function runTeamCreationTests(superAdminJar: CookieJar): Promise<void> {
+  console.log("\nTeam creation");
 
-  const jwtEmail = uniqueEmail("mfajoin");
-  await insertStaff({ name: "MFA Staff", email: jwtEmail, role: "MANAGER" });
+  const managerEmail = uniqueEmail("directmgr");
 
-  await check("mfa/setup is refused without the pending cookie", async () => {
-    const response = await api("/api/staff/mfa/setup", { method: "POST", body: {} });
-    assertEqual(response.status, 403, "setup requires the pre-auth cookie");
-    assertEqual(
-      (response.body.error as { code?: string })?.code,
-      "MFA_SETUP_REQUIRED",
-      "error code",
-    );
-  });
-
-  await check("mfa/verify is refused without the pending cookie", async () => {
-    const response = await api("/api/staff/mfa/verify", {
+  await check("super admin can add a Manager with an initial password", async () => {
+    const response = await api("/api/staff/team", {
       method: "POST",
-      body: { code: "123456" },
+      body: {
+        name: "Direct Manager",
+        email: managerEmail,
+        password: PASSWORD,
+        confirmPassword: PASSWORD,
+        role: "MANAGER",
+      },
+      jar: superAdminJar,
     });
-    assertEqual(response.status, 403, "verify requires the pre-auth cookie");
+    assertEqual(response.status, 201, "create status");
+    const staff = response.body.staff as {
+      email: string;
+      role: string;
+      isActive: boolean;
+    };
+    assertEqual(staff.email, managerEmail, "email returned");
+    assertEqual(staff.role, "MANAGER", "role persisted");
+    assertEqual(staff.isActive, true, "new account is active");
   });
 
-  const jar: CookieJar = {};
-  const login = await api("/api/staff/login", {
-    method: "POST",
-    body: { email: jwtEmail, password: PASSWORD },
-    jar,
-  });
-  assertEqual(login.body.step as string, "MFA_SETUP", "manager without MFA goes to setup");
-
-  const setupResponse = await api("/api/staff/mfa/setup", { method: "POST", body: {}, jar });
-  await check("mfa setup exposes a QR + manual secret", async () => {
-    assertEqual(setupResponse.status, 200, "setup status");
-    const qr = setupResponse.body.qrDataUrl as string;
-    assert(qr.startsWith("data:image/png;base64,"), "QR code is a PNG data URL");
-    const uri = setupResponse.body.otpauthUri as string;
-    assert(uri.startsWith("otpauth://totp/"), "otpauth URI is well formed");
-    assert((setupResponse.body.secret as string).length >= 32, "base32 secret present");
-  });
-
-  const secret = setupResponse.body.secret as string;
-
-  await check("mfa verify rejects a wrong code", async () => {
-    const response = await api("/api/staff/mfa/verify", {
-      method: "POST",
-      body: { code: "000000" },
-      jar,
-    });
-    assertEqual(response.status, 422, "wrong code is rejected");
-    assert(!hasSession(jar), "no session granted on a wrong code");
-  });
-
-  await check("mfa verify accepts the correct code and issues a session", async () => {
-    const ok = await verifyMfa(jar, secret);
-    assert(ok, "correct code completes MFA and grants a full session");
-  });
-
-  await check("mfa enrolment is persisted encrypted", async () => {
-    const doc = await StaffProfile.findOne({ email: jwtEmail }).select("+mfaSecretEncrypted");
-    assertEqual(doc?.mfaEnabled, true, "mfaEnabled flag set");
-    const stored = doc?.mfaSecretEncrypted ?? "";
-    assert(stored.length > 40, "an encrypted payload is stored");
-    assert(stored !== secret, "the plaintext secret is never stored");
-    assert(!stored.includes(secret), "plaintext secret not embedded in ciphertext");
-  });
-
-  await check("mfa audit trail records setup", async () => {
-    const staff = await staffDoc(jwtEmail);
-    const action = await AuditLog.findOne({
-      targetStaffId: staff?._id,
-      action: { $in: ["STAFF_MFA_ENABLED", "STAFF_MFA_VERIFIED"] },
-    }).lean();
-    assert(Boolean(action), "an MFA audit entry exists");
-  });
-
-  await check("next login routes an enrolled manager to MFA_VERIFY", async () => {
-    const nextJar: CookieJar = {};
+  await check("an added team member signs in with the password immediately", async () => {
+    const jar: CookieJar = {};
     const response = await api("/api/staff/login", {
       method: "POST",
-      body: { email: jwtEmail, password: PASSWORD },
-      jar: nextJar,
+      body: { email: managerEmail, password: PASSWORD },
+      jar,
     });
     assertEqual(response.status, 200, "login status");
-    assertEqual(response.body.step as string, "MFA_VERIFY", "enrolled account verifies only");
-    const ok = await verifyMfa(nextJar, secret);
-    assert(ok, "verify step completes");
+    assertEqual(response.body.step as string, "COMPLETE", "no verification step");
+    assert(hasSession(jar), "session cookie present");
   });
 
-  await check("mfa/verify is brute force rate limited", async () => {
-    const hammerName = uniqueEmail("mfarate");
-    await insertStaff({ name: "MFA Rate", email: hammerName, role: "MANAGER" });
-    const hammerJar: CookieJar = {};
-    await api("/api/staff/login", {
-      method: "POST",
-      body: { email: hammerName, password: PASSWORD },
-      jar: hammerJar,
-    });
-    await api("/api/staff/mfa/setup", { method: "POST", body: {}, jar: hammerJar });
-
-    let lastStatus = 0;
-    for (let attempt = 0; attempt < 10; attempt += 1) {
-      const response = await api("/api/staff/mfa/verify", {
-        method: "POST",
-        body: { code: "000000" },
-        jar: hammerJar,
-      });
-      lastStatus = response.status;
-      if (lastStatus === 429) break;
-    }
-    assertEqual(lastStatus, 429, "MFA verification is throttled");
+  await check("the initial password is bcrypt at rest (never plaintext)", async () => {
+    const doc = await StaffProfile.findOne({ email: managerEmail }).select("+passwordHash");
+    const hash = doc?.passwordHash ?? "";
+    assert(hash.startsWith("$2"), "password stored as a bcrypt hash");
+    assert(!hash.includes(PASSWORD), "plaintext password never stored");
   });
 
-  await check("cashier MFA setup is refused (not required)", async () => {
-    const cashierEmail = uniqueEmail("mfacashier");
-    await insertStaff({ name: "MFA Cashier", email: cashierEmail, role: "CASHIER" });
-    const cashierJar: CookieJar = {};
-    await api("/api/staff/login", {
-      method: "POST",
-      body: { email: cashierEmail, password: PASSWORD },
-      jar: cashierJar,
-    });
-    const response = await api("/api/staff/mfa/setup", {
-      method: "POST",
-      body: {},
-      jar: cashierJar,
-    });
-    assertEqual(response.status, 403, "cashiers cannot enter the MFA setup path");
-    assert(Boolean(hasSession(cashierJar)), "cashier still holds a real session");
-  });
-}
-
-async function runInvitationTests(superAdminJar: CookieJar): Promise<void> {
-  console.log("\nInvitations");
-
-  const directorName = uniqueEmail("dir");
-  let invitationA: { code: string; invitationId: string; email: string } | null = null;
-
-  await check("super admin can invite a Manager", async () => {
-    const response = await api("/api/staff/invitations", {
-      method: "POST",
-      body: { email: directorName, role: "MANAGER" },
-      jar: superAdminJar,
-    });
-    assertEqual(response.status, 201, "create invitation status");
-    const code = response.body.code as string;
-    const invitation = response.body.invitation as { id: string; status: string };
-    assert(code.length >= 12, "a one-time code is returned");
-    assertEqual(invitation.status, "PENDING", "invitation starts pending");
-    invitationA = { code, invitationId: invitation.id, email: directorName };
-  });
-
-  await check("invitation codes are hashed at rest", async () => {
-    const row = await StaffInvitation.findById(invitationA!.invitationId).lean();
-    const codeHash = row?.codeHash as string;
-    assert(codeHash !== invitationA!.code, "the raw code is not stored");
-    assert(codeHash.length === 64, "the stored value is a SHA-256 hash");
-  });
-
-  await check("a duplicate pending invitation is rejected", async () => {
-    const response = await api("/api/staff/invitations", {
-      method: "POST",
-      body: { email: directorName, role: "CASHIER" },
-      jar: superAdminJar,
-    });
-    assertEqual(response.status, 409, "duplicate invitation rejected");
-  });
-
-  await check("inviting an existing staff email is rejected", async () => {
+  await check("adding an existing staff email is rejected", async () => {
     const existing = uniqueEmail("taken");
     await insertStaff({ name: "Taken", email: existing, role: "CASHIER" });
-    const response = await api("/api/staff/invitations", {
+    const response = await api("/api/staff/team", {
       method: "POST",
-      body: { email: existing, role: "CASHIER" },
+      body: {
+        name: "Taken Again",
+        email: existing,
+        password: PASSWORD,
+        confirmPassword: PASSWORD,
+        role: "SELLER",
+      },
       jar: superAdminJar,
     });
     assertEqual(response.status, 409, "existing staff email rejected");
   });
 
-  await check("unauthenticated callers cannot create invitations", async () => {
-    const response = await api("/api/staff/invitations", {
+  await check("unauthenticated callers cannot add team members", async () => {
+    const response = await api("/api/staff/team", {
       method: "POST",
-      body: { email: uniqueEmail("anon"), role: "CASHIER" },
+      body: {
+        name: "Anonymous Add",
+        email: uniqueEmail("anon"),
+        password: PASSWORD,
+        confirmPassword: PASSWORD,
+        role: "SELLER",
+      },
     });
     assertEqual(response.status, 401, "no session -> 401");
   });
 
-  await check("cashiers cannot create invitations", async () => {
+  await check("cashiers cannot add team members", async () => {
     const cashierJar = await establishCashier();
-    const response = await api("/api/staff/invitations", {
+    const response = await api("/api/staff/team", {
       method: "POST",
-      body: { email: uniqueEmail("cashierinv"), role: "CASHIER" },
+      body: {
+        name: "Cashier Add",
+        email: uniqueEmail("cashieradd"),
+        password: PASSWORD,
+        confirmPassword: PASSWORD,
+        role: "SELLER",
+      },
       jar: cashierJar,
     });
     assertEqual(response.status, 403, "cashier denied");
   });
 
   const managerJar = await establishManager();
-  await check("managers can invite Cashiers only", async () => {
-    const cashierTarget = uniqueEmail("mgrcash");
-    const response = await api("/api/staff/invitations", {
+  await check("managers can add Sellers only", async () => {
+    const sellerTarget = uniqueEmail("mgrseller");
+    const allowed = await api("/api/staff/team", {
       method: "POST",
-      body: { email: cashierTarget, role: "CASHIER" },
+      body: {
+        name: "Manager Added Seller",
+        email: sellerTarget,
+        password: PASSWORD,
+        confirmPassword: PASSWORD,
+        role: "SELLER",
+      },
       jar: managerJar,
     });
-    assertEqual(response.status, 201, "manager -> cashier allowed");
-    assert((response.body.code as string).length >= 12, "code returned");
+    assertEqual(allowed.status, 201, "manager -> seller allowed");
 
-    const managerTarget = uniqueEmail("mgrman");
-    const denied = await api("/api/staff/invitations", {
+    const managerTarget = uniqueEmail("mgrmanager");
+    const denied = await api("/api/staff/team", {
       method: "POST",
-      body: { email: managerTarget, role: "MANAGER" },
+      body: {
+        name: "Manager Adds Manager",
+        email: managerTarget,
+        password: PASSWORD,
+        confirmPassword: PASSWORD,
+        role: "MANAGER",
+      },
       jar: managerJar,
     });
     assertEqual(denied.status, 403, "manager -> manager forbidden");
   });
 
-  await check("check validates code + email", async () => {
-    const good = await api("/api/staff/invitations/check", {
-      method: "POST",
-      body: { code: invitationA!.code, email: invitationA!.email },
-    });
-    assertEqual(good.status, 200, "valid code accepted");
-    assertEqual((good.body.invitation as { role?: string }).role, "MANAGER", "role returned");
+  await check("team creation validation rejects weak passwords and mismatches", async () => {
+    const target = uniqueEmail("weakadd");
 
-    const wrongEmail = await api("/api/staff/invitations/check", {
-      method: "POST",
-      body: { code: invitationA!.code, email: uniqueEmail("other") },
-    });
-    assertEqual(wrongEmail.status, 422, "email mismatch rejected");
-
-    const unknown = await api("/api/staff/invitations/check", {
-      method: "POST",
-      body: { code: "nx-no-such-code-123", email: directorName },
-    });
-    assertEqual(unknown.status, 404, "unknown code rejected");
-  });
-
-  const joinName = uniqueEmail("joincash");
-  await check("accepting a cashier invitation signs in with COMPLETE", async () => {
-    const create = await api("/api/staff/invitations", {
-      method: "POST",
-      body: { email: joinName, role: "CASHIER" },
-      jar: superAdminJar,
-    });
-    const code = create.body.code as string;
-
-    const jar: CookieJar = {};
-    const response = await api("/api/staff/invitations/accept", {
+    const weak = await api("/api/staff/team", {
       method: "POST",
       body: {
-        code,
-        email: joinName,
-        name: "Join Cashier",
-        password: PASSWORD,
-        confirmPassword: PASSWORD,
-      },
-      jar,
-    });
-    assertEqual(response.status, 201, "accept status");
-    assertEqual(response.body.step as string, "COMPLETE", "cashier gets a session now");
-    assert(hasSession(jar), "session cookie present");
-  });
-
-  await check("a used code can never be used again", async () => {
-    const replayEmail = uniqueEmail("replay");
-    const create = await api("/api/staff/invitations", {
-      method: "POST",
-      body: { email: replayEmail, role: "CASHIER" },
-      jar: superAdminJar,
-    });
-    const code = create.body.code as string;
-    const first = await api("/api/staff/invitations/accept", {
-      method: "POST",
-      body: {
-        code,
-        email: replayEmail,
-        name: "Replay Join",
-        password: PASSWORD,
-        confirmPassword: PASSWORD,
-      },
-    });
-    assertEqual(first.status, 201, "first accept creates the account");
-
-    const replay = await api("/api/staff/invitations/accept", {
-      method: "POST",
-      body: {
-        code,
-        email: replayEmail,
-        name: "Replay Join",
-        password: PASSWORD,
-        confirmPassword: PASSWORD,
-      },
-    });
-    assertEqual(replay.status, 409, "replay is rejected");
-  });
-
-  await check("accepting a manager invitation requires MFA setup", async () => {
-    const managerTarget = uniqueEmail("joinmgr");
-    const create = await api("/api/staff/invitations", {
-      method: "POST",
-      body: { email: managerTarget, role: "MANAGER" },
-      jar: superAdminJar,
-    });
-    const code = create.body.code as string;
-
-    const jar: CookieJar = {};
-    const response = await api("/api/staff/invitations/accept", {
-      method: "POST",
-      body: {
-        code,
-        email: managerTarget,
-        name: "Join Manager",
-        password: PASSWORD,
-        confirmPassword: PASSWORD,
-      },
-      jar,
-    });
-    assertEqual(response.status, 201, "accept status");
-    assertEqual(response.body.step as string, "MFA_SETUP", "manager must set up MFA first");
-    assert(!hasSession(jar), "no session until MFA is completed");
-    assert(hasPending(jar), "pending MFA cookie present");
-
-    const setup = await api("/api/staff/mfa/setup", { method: "POST", body: {}, jar });
-    assertEqual(setup.status, 200, "MFA setup works after accepting");
-    const ok = await verifyMfa(jar, setup.body.secret as string);
-    assert(ok, "full session after MFA");
-  });
-
-  await check("join validation rejects weak passwords and mismatches", async () => {
-    const target = uniqueEmail("weakjoin");
-    const create = await api("/api/staff/invitations", {
-      method: "POST",
-      body: { email: target, role: "CASHIER" },
-      jar: superAdminJar,
-    });
-    const code = create.body.code as string;
-
-    const weak = await api("/api/staff/invitations/accept", {
-      method: "POST",
-      body: {
-        code,
+        name: "Weak Add",
         email: target,
-        name: "Weak Join",
         password: "short",
         confirmPassword: "short",
+        role: "SELLER",
       },
+      jar: superAdminJar,
     });
     assertEqual(weak.status, 400, "weak password rejected with 400");
     const weakField = weak.body.error as { fieldErrors?: Record<string, string[]> } | undefined;
     assert(Boolean(weakField?.fieldErrors?.password), "password field error surfaced");
 
-    const mismatch = await api("/api/staff/invitations/accept", {
+    const mismatch = await api("/api/staff/team", {
       method: "POST",
       body: {
-        code,
+        name: "Mismatch Add",
         email: target,
-        name: "Mismatch Join",
         password: PASSWORD,
         confirmPassword: "Different",
+        role: "SELLER",
       },
+      jar: superAdminJar,
     });
     assertEqual(mismatch.status, 400, "password mismatch rejected");
-    const mismatchField = mismatch.body.error as { fieldErrors?: Record<string, string[]> } | undefined;
-    assert(Boolean(mismatchField?.fieldErrors?.confirmPassword), "confirmPassword field error surfaced");
+    const mismatchField = mismatch.body.error as
+      | { fieldErrors?: Record<string, string[]> }
+      | undefined;
+    assert(
+      Boolean(mismatchField?.fieldErrors?.confirmPassword),
+      "confirmPassword field error surfaced",
+    );
   });
 
-  await check("expired invitations are reported and surfaced in the team view", async () => {
-    const expiredEmail = uniqueEmail("expired");
-    const expiredCode = `expired-${Date.now()}`;
-    const source = await StaffInvitation.findById(invitationA!.invitationId).lean();
-    await StaffInvitation.create({
-      email: expiredEmail,
-      role: "CASHIER",
-      codeHash: sha256Hex(expiredCode),
-      invitedBy: source?.invitedBy,
-      expiresAt: new Date(Date.now() - 1000),
-    });
-
-    const checkResponse = await api("/api/staff/invitations/check", {
+  await check("legacy invitation endpoints no longer exist", async () => {
+    const response = await api("/api/staff/invitations", {
       method: "POST",
-      body: { code: expiredCode, email: expiredEmail },
+      body: { email: uniqueEmail("legacy"), role: "SELLER" },
+      jar: superAdminJar,
     });
-    assertEqual(checkResponse.status, 410, "expired code -> 410");
+    assertEqual(response.status, 404, "invitation endpoint removed");
 
-    const team = await api("/api/staff/team", { jar: superAdminJar });
-    const invitations = team.body.invitations as { email: string; status: string }[];
-    const expiredRow = invitations.find((row) => row.email === expiredEmail);
-    assert(Boolean(expiredRow), "expired invitation listed");
-    assertEqual(expiredRow?.status, "EXPIRED", "derived status is EXPIRED");
-  });
-
-  await check("new staff password is bcrypt at rest (never plaintext)", async () => {
-    const doc = await StaffProfile.findOne({ email: joinName }).select("+passwordHash");
-    const hash = doc?.passwordHash ?? "";
-    assert(hash.startsWith("$2"), "password stored as a bcrypt hash");
-    assert(!hash.includes(PASSWORD), "plaintext password never stored");
+    const joinPage = await fetch(`${BASE_URL}/pos/join`, { redirect: "manual" });
+    assertEqual(joinPage.status, 404, "join-with-code page removed");
   });
 }
 
-async function establishCashierSessionThroughInvite(superAdminJar: CookieJar): Promise<{
+async function establishTeamCashier(superAdminJar: CookieJar): Promise<{
   email: string;
   jar: CookieJar;
   staffId: string;
 }> {
   const email = uniqueEmail("teamcashier");
-  const create = await api("/api/staff/invitations", {
+  const create = await api("/api/staff/team", {
     method: "POST",
-    body: { email, role: "CASHIER" },
+    body: {
+      name: "Team Cashier",
+      email,
+      password: PASSWORD,
+      confirmPassword: PASSWORD,
+      role: "SELLER",
+    },
     jar: superAdminJar,
   });
-  const code = create.body.code as string;
-  const jar: CookieJar = {};
-  await api("/api/staff/invitations/accept", {
-    method: "POST",
-    body: { code, email, name: "Team Cashier", password: PASSWORD, confirmPassword: PASSWORD },
-    jar,
-  });
-  const member = await staffDoc(email);
-  return { email, jar, staffId: String(member?._id) };
+  assertEqual(create.status, 201, "team cashier created");
+  const staff = create.body.staff as { id: string };
+  const jar = (await fullSignIn(email)).jar;
+  return { email, jar, staffId: staff.id };
 }
 
 async function runTeamTests(superAdminJar: CookieJar): Promise<void> {
   console.log("\nTeam access");
 
-  const cashier = await establishCashierSessionThroughInvite(superAdminJar);
+  const cashier = await establishTeamCashier(superAdminJar);
   const managerJar = await establishManager();
 
-  await check("team list returns staff + invitations to a manager", async () => {
+  await check("team list returns the staff directory to a manager", async () => {
     const response = await api("/api/staff/team", { jar: managerJar });
     assertEqual(response.status, 200, "team list status");
     assert(Array.isArray(response.body.staff), "staff array returned");
-    assert(Array.isArray(response.body.invitations), "invitations array returned");
+    assert(!("invitations" in response.body), "invitations are no longer part of the team payload");
   });
 
   await check("cashiers are denied the team list", async () => {
@@ -835,15 +556,22 @@ async function runTeamTests(superAdminJar: CookieJar): Promise<void> {
     assertEqual(me.status, 401, "deactivated staff loses portal access immediately");
   });
 
-  await check("re-activating restores access", async () => {
+  await check("re-activating does not revive the revoked session", async () => {
     const response = await api(`/api/staff/team/${cashier.staffId}`, {
       method: "PATCH",
       body: { staffId: cashier.staffId, isActive: true },
       jar: superAdminJar,
     });
     assertEqual(response.status, 200, "activate status");
+
     const me = await api("/api/staff/me", { jar: cashier.jar });
-    assertEqual(me.status, 200, "session works again after activation");
+    assertEqual(me.status, 401, "the pre-deactivation session stays dead");
+
+    const fresh = await api("/api/staff/login", {
+      method: "POST",
+      body: { email: cashier.email, password: PASSWORD },
+    });
+    assertEqual(fresh.status, 200, "the reactivated member can sign in again");
   });
 
   await check("super admin promotes a cashier to manager", async () => {
@@ -856,7 +584,7 @@ async function runTeamTests(superAdminJar: CookieJar): Promise<void> {
     assertEqual((response.body.staff as { role: string }).role, "MANAGER", "role persisted");
   });
 
-  await check("promoted cashier must re-authenticate (old session never grants the portal)", async () => {
+  await check("promoted cashier must sign in again (sessions are revoked on role change)", async () => {
     const portal = await fetch(`${BASE_URL}/pos`, {
       headers: { Cookie: cookieHeader(cashier.jar) },
       redirect: "manual",
@@ -864,11 +592,11 @@ async function runTeamTests(superAdminJar: CookieJar): Promise<void> {
     const location = portal.headers.get("location") ?? "";
     assert(location.includes("/pos/login"), `portal redirects to sign-in, got ${location}`);
 
-    const legacyHandoff = await fetch(`${BASE_URL}/pos/activate-mfa`, {
+    const removedHandoff = await fetch(`${BASE_URL}/pos/activate-mfa`, {
       headers: { Cookie: cookieHeader(cashier.jar) },
       redirect: "manual",
     });
-    assertEqual(legacyHandoff.status, 404, "the legacy MFA hand-off route no longer exists");
+    assertEqual(removedHandoff.status, 404, "the legacy MFA hand-off route does not exist");
   });
 
   await check("managers cannot deactivate other managers", async () => {
@@ -881,7 +609,7 @@ async function runTeamTests(superAdminJar: CookieJar): Promise<void> {
   });
 
   await check("managers can deactivate cashiers", async () => {
-    const freshCashier = await establishCashierSessionThroughInvite(superAdminJar);
+    const freshCashier = await establishTeamCashier(superAdminJar);
     const response = await api(`/api/staff/team/${freshCashier.staffId}`, {
       method: "PATCH",
       body: { staffId: freshCashier.staffId, isActive: false },
@@ -951,7 +679,7 @@ async function runSessionTests(): Promise<void> {
     assertEqual(response.status, 401, "anonymous -> 401");
   });
 
-  const jar = (await fullSignIn(email, "COMPLETE")).jar;
+  const jar = (await fullSignIn(email)).jar;
 
   await check("/api/staff/me returns the signed-in profile", async () => {
     const response = await api("/api/staff/me", { jar });
@@ -961,7 +689,7 @@ async function runSessionTests(): Promise<void> {
     const member = response.body.staff as Record<string, unknown>;
     assert(
       !("passwordHash" in member) && !("mfaSecretEncrypted" in member),
-      "me never leaks hashes or MFA secrets",
+      "me never leaks password hashes or removed legacy fields",
     );
   });
 
@@ -1021,7 +749,7 @@ async function runGuardTests(superAdminJar: CookieJar): Promise<void> {
 
   const cashierEmail = uniqueEmail("guardcash");
   await insertStaff({ name: "Guard Cashier", email: cashierEmail, role: "CASHIER" });
-  const cashier = await fullSignIn(cashierEmail, "COMPLETE");
+  const cashier = await fullSignIn(cashierEmail);
 
   await check("cashiers cannot open restricted modules", async () => {
     const teamPage = await fetch(`${BASE_URL}/pos/team`, {
@@ -1049,11 +777,8 @@ async function cleanup(): Promise<void> {
       .lean<{ _id: Types.ObjectId; email: string }[]>();
     const ids = staff.map((member) => member._id);
 
-    const [deletedSessions, deletedInvites, deletedAudit, deletedStaff] = await Promise.all([
+    const [deletedSessions, deletedAudit, deletedStaff] = await Promise.all([
       StaffSession.deleteMany({ staffId: { $in: ids } }),
-      StaffInvitation.deleteMany({
-        $or: [{ invitedBy: { $in: ids } }, { email: { $in: createdStaffEmails } }],
-      }),
       AuditLog.deleteMany({
         $or: [{ actorStaffId: { $in: ids } }, { targetStaffId: { $in: ids } }],
       }),
@@ -1061,7 +786,7 @@ async function cleanup(): Promise<void> {
     ]);
 
     console.log(
-      `[cleanup] removed ${deletedStaff.deletedCount} staff, ${deletedSessions.deletedCount} sessions, ${deletedInvites.deletedCount} invitations, ${deletedAudit.deletedCount} audit entries`,
+      `[cleanup] removed ${deletedStaff.deletedCount} staff, ${deletedSessions.deletedCount} sessions, ${deletedAudit.deletedCount} audit entries`,
     );
   } catch (error) {
     console.error("[cleanup] failed", error);
@@ -1075,8 +800,7 @@ async function main(): Promise<void> {
   try {
     const superAdminJar = await establishSuperAdmin();
     await runAuthTests();
-    await runMfaTests();
-    await runInvitationTests(superAdminJar);
+    await runTeamCreationTests(superAdminJar);
     await runTeamTests(superAdminJar);
     await runSessionTests();
     await runGuardTests(superAdminJar);

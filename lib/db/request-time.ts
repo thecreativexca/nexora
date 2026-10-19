@@ -8,5 +8,9 @@ import { connection } from "next/server";
  * catalog/order read helper calls this before querying MongoDB.
  */
 export async function ensureRequestTime(): Promise<void> {
+  // Service-level integration tests and maintenance scripts run outside the
+  // Next.js request runtime. They already execute dynamically and must not call
+  // `connection()`, which is only valid while Next is handling a request.
+  if (!process.env.NEXT_RUNTIME) return;
   await connection();
 }

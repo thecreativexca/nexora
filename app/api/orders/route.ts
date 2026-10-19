@@ -8,5 +8,13 @@
  * server-side; `customerId` comes from the session, never from the body.
  */
 export async function POST() {
-  return Response.json({ error: { code: "PAYPAL_REQUIRED", message: "Use the secure PayPal checkout to place an online order." } }, { status: 410 });
+  return Response.json(
+    {
+      error: {
+        code: "OFFLINE_CHECKOUT_REQUIRED",
+        message: "Use the storefront checkout to place an order with an offline payment method.",
+      },
+    },
+    { status: 410 },
+  );
 }

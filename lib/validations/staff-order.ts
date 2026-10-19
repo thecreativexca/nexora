@@ -51,5 +51,6 @@ export const refundRequestSchema = z.object({
     .trim()
     .min(REFUND_REASON_MIN_LENGTH, "Please add a short reason for the refund.")
     .max(REFUND_REASON_MAX_LENGTH, "That refund reason is too long."),
-});
+  action: z.enum(["issue", "request", "approve", "reject"]).optional().default("issue"),
+}).strict();
 export type RefundRequestInput = z.output<typeof refundRequestSchema>;

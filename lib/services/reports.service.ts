@@ -1,5 +1,7 @@
 import "server-only";
 
+import { Types } from "mongoose";
+
 import { ORDER_CHANNEL, ORDER_STATUS } from "@/lib/constants/order";
 import { connectDB } from "@/lib/db/mongodb";
 import { ensureRequestTime } from "@/lib/db/request-time";
@@ -64,7 +66,7 @@ function emptyChannelStats(): SalesChannelStats {
   return { orderCount: 0, revenueInPaise: 0 };
 }
 
-export async function getSalesReport(): Promise<SalesReport> {
+export async function getSalesReport(staffId?: string): Promise<SalesReport> {
   await ensureRequestTime();
 
   try {
@@ -72,6 +74,11 @@ export async function getSalesReport(): Promise<SalesReport> {
   } catch (error) {
     throw toDatabaseError(error);
   }
+
+  const staffMatch =
+    staffId && Types.ObjectId.isValid(staffId)
+      ? { placedByStaffId: new Types.ObjectId(staffId) }
+      : {};
 
   const timezone = getBusinessTimezone();
   // days[0] = oldest, days[6] = today.
@@ -87,6 +94,7 @@ export async function getSalesReport(): Promise<SalesReport> {
               $match: {
                 createdAt: { $gte: today.startUtc, $lt: today.endUtc },
                 status: { $nin: REVENUE_EXCLUDED_STATUSES },
+                ...staffMatch,
               },
             },
             {
@@ -100,12 +108,18 @@ export async function getSalesReport(): Promise<SalesReport> {
             {
               $match: {
                 createdAt: { $gte: today.startUtc, $lt: today.endUtc },
+                ...staffMatch,
               },
             },
             { $count: "count" },
           ],
           totals: [
-            { $match: { status: { $nin: REVENUE_EXCLUDED_STATUSES } } },
+            {
+              $match: {
+                status: { $nin: REVENUE_EXCLUDED_STATUSES },
+                ...staffMatch,
+              },
+            },
             {
               $group: {
                 _id: null,
@@ -115,6 +129,7 @@ export async function getSalesReport(): Promise<SalesReport> {
             },
           ],
           channels: [
+            ...(Object.keys(staffMatch).length > 0 ? [{ $match: staffMatch }] : []),
             {
               $group: {
                 _id: { channel: "$channel", status: "$status" },
@@ -132,6 +147,7 @@ export async function getSalesReport(): Promise<SalesReport> {
         $match: {
           createdAt: { $gte: days[0].startUtc, $lt: today.endUtc },
           status: { $nin: REVENUE_EXCLUDED_STATUSES },
+          ...staffMatch,
         },
       },
       {

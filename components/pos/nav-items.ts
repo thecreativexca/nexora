@@ -1,9 +1,10 @@
 import {
   STAFF_PERMISSION,
-  staffHasPermission,
+  STAFF_ROLE_PERMISSIONS,
   type StaffPermission,
   type StaffRole,
 } from "@/lib/constants/staff";
+import type { StaffView } from "@/types/staff";
 
 /**
  * Sidebar / dashboard navigation for the /pos portal. Rendered as a list of
@@ -58,10 +59,35 @@ export const POS_NAV_ITEMS: PosNavItem[] = [
     href: "/pos/team",
     label: "Team access",
     permission: STAFF_PERMISSION.MANAGE_TEAM,
-    description: "Invite and manage staff",
+    description: "Add and manage staff",
   },
 ];
 
-export function getNavItems(role: StaffRole): PosNavItem[] {
-  return POS_NAV_ITEMS.filter((item) => staffHasPermission(role, item.permission));
+export function getNavItems(staffOrRole: StaffView | StaffRole): PosNavItem[] {
+  const permissions: readonly StaffPermission[] =
+    typeof staffOrRole === "string"
+      ? STAFF_ROLE_PERMISSIONS[staffOrRole] ?? []
+      : staffOrRole.effectivePermissions ?? STAFF_ROLE_PERMISSIONS[staffOrRole.role] ?? [];
+
+  return POS_NAV_ITEMS.filter((item) => {
+    if (item.permission === STAFF_PERMISSION.ACCESS_DASHBOARD) {
+      return (
+        permissions.includes(STAFF_PERMISSION.ACCESS_DASHBOARD) ||
+        permissions.includes(STAFF_PERMISSION.ACCESS_STORE_DASHBOARD)
+      );
+    }
+    if (item.permission === STAFF_PERMISSION.ACCESS_ORDERS) {
+      return (
+        permissions.includes(STAFF_PERMISSION.ACCESS_ORDERS) ||
+        permissions.includes(STAFF_PERMISSION.ORDERS_VIEW_OWN)
+      );
+    }
+    if (item.permission === STAFF_PERMISSION.ACCESS_REPORTS) {
+      return (
+        permissions.includes(STAFF_PERMISSION.ACCESS_REPORTS) ||
+        permissions.includes(STAFF_PERMISSION.REPORTS_VIEW_OWN)
+      );
+    }
+    return permissions.includes(item.permission);
+  });
 }

@@ -58,7 +58,7 @@ export function toSuccessResponse<T>(data: T, status = 200): NextResponse<T> {
  */
 export async function readJsonBody(
   request: Request,
-  context: string,
+  context = "Read JSON request body",
 ): Promise<{ body: unknown } | { error: NextResponse<ApiErrorBody> }> {
   try {
     return { body: await request.json() };
@@ -68,3 +68,6 @@ export async function readJsonBody(
     };
   }
 }
+
+/** Backward-compatible name used by the POS route handlers. */
+export const parseJsonBody = readJsonBody;

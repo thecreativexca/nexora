@@ -1,21 +1,21 @@
 ﻿# Nexora — POS + Storefront (Next.js App Router, TypeScript, MongoDB)
 
-Nexora is a complete point-of-sale + ecommerce storefront built with Next.js (App Router), TypeScript, React, Tailwind CSS, Mongoose (MongoDB), Zod, bcryptjs, and TOTP-based MFA. 
+Nexora is a complete point-of-sale + ecommerce storefront built with Next.js (App Router), TypeScript, React, Tailwind CSS, Mongoose (MongoDB), Zod, and bcryptjs.
 
 ## Key features
 - Public storefront (products, categories, search, cart validation, PayPal checkout with guest support, order tracking)
 - Customer accounts (email/password, Google, Facebook, OTP password recovery, protected account area, order history)
 - POS portal (/pos) for staff (SUPER_ADMIN/MANAGER/CASHIER) with role-based permissions
-- Staff MFA (mandatory for SUPER_ADMIN/MANAGER, optional for CASHIER) using TOTP; sessions are MFA-verified at the session document level
-- Team Access (invitations, role changes, activate/deactivate) with transactional acceptance and audit logging
+- Staff sign-in with email + password (no second verification step)
+- Team Access (direct team member creation with email + password, role changes, activate/deactivate) with audit logging
 - Inventory management, POS sales (idempotency keys), orders management (ONLINE delivery workflow), full-order refunds (transactional + stock restoration)
 - Reports (MongoDB aggregation, business timezone aware), audit trail, server-side price/stock validation
 
 ## Architecture notes
 - Money: integer paise (priceInPaise) throughout; use lib/utils/money.ts and constants in lib/constants/*
-- Sessions: opaque HttpOnly token + SHA-256 hash stored in MongoDB (StaffSession, CustomerSession). Staff sessions carry mfaVerified (enforced in loadCurrentStaff)
-- Security: CSRF protection via sameSite=lax + HttpOnly, input validation (Zod), bcrypt for passwords, TOTP secrets AES-256-GCM encrypted (MFA_ENCRYPTION_KEY), audit logging of sensitive actions (never logging secrets)
-- Transactions: MongoDB replica set is required (order creation, refund, invitation acceptance use transactions). Single-node dev replica set documented below.
+- Sessions: opaque HttpOnly token + SHA-256 hash stored in MongoDB (StaffSession, CustomerSession)
+- Security: CSRF protection via sameSite=lax + HttpOnly, input validation (Zod), bcrypt for passwords, audit logging of sensitive actions (never logging secrets)
+- Transactions: MongoDB replica set is required (order creation and refunds use transactions). Single-node dev replica set documented below.
 - Data integrity: server re-reads prices/stock for all checkouts/sales/refunds (never trusts client totals), optimistic/CAS style guards where applicable
 
 ## Prerequisites
@@ -28,8 +28,6 @@ pm.
 1. Copy .env.example to .env.local and fill values:
    - MONGODB_URI (e.g. mongodb://127.0.0.1:27018/nexora-rs?replicaSet=rs0)
    - NEXT_PUBLIC_APP_URL (e.g. http://localhost:3000)
-   - STAFF_SESSION_SECRET (>=32 chars recommended)
-   - MFA_ENCRYPTION_KEY (32+ chars)
    - BUSINESS_TIMEZONE (IANA, e.g. Asia/Kolkata)
 2. Start your local MongoDB replica set (port 27018, 
 exora-rs as in example). Ensure transactions are available.
@@ -42,7 +40,7 @@ pm run seed:reset — deletes catalogue collections first, then re-seeds
 - 
 pm run seed:accounts — upserts demo customer (demo@nexora.example / Demo@12345, development only)
 - 
-pm run create-super-admin — creates/updates SUPER_ADMIN (interactive or via env vars). MFA not enabled until first login (required for that role)
+pm run create-super-admin — creates/updates SUPER_ADMIN (interactive or via env vars)
 
 ## Development
 - 
@@ -65,7 +63,7 @@ pm run test:api — integration API tests
 - 
 pm run test:account — customer account flows
 - 
-pm run test:phase3 — staff onboarding, MFA, sessions, team/invitations
+pm run test:phase3 — staff onboarding, sign-in, sessions, team management
 - 
 pm run test:phase4 — POS sales, inventory, images, permissions
 - 
@@ -74,11 +72,11 @@ pm run test:phase5 — orders workflow (status transitions), refunds (transactio
 pm run test:e2e — storefront smoke (placeholder in this environment)
 
 ## RBAC summary
-Roles: SUPER_ADMIN, MANAGER, CASHIER. Permissions centralized in lib/constants/staff.ts (includes MANAGE_ORDER_STATUS, ISSUE_REFUND, team/invite/report/inventory access). Self-protection enforced server-side; SUPER_ADMIN cannot be modified by others. Staff sessions enforce mfaVerified for MFA-required roles.
+Roles: SUPER_ADMIN, MANAGER, CASHIER. Permissions centralized in lib/constants/staff.ts (includes MANAGE_ORDER_STATUS, ISSUE_REFUND, team/report/inventory access). Self-protection enforced server-side; SUPER_ADMIN cannot be modified by others.
 
-## MFA model
-- mfaEnabled on staff profile; TOTP secret AES-256-GCM encrypted at rest. 
-- Pre-auth MFA state uses STAFF_MFA_PENDING_COOKIE (HMAC-signed, short TTL). A full StaffSession (with mfaVerified=true) is only minted after successful TOTP verification (or not created at all for MFA-required roles). Cashier sessions are created at COMPLETE login with mfaVerified=false (MFA optional).
+## Staff sign-in model
+- Email + password authentication creates the staff session immediately; there is no OTP or second verification step.
+- Sessions are opaque HttpOnly cookies with the token hash stored server-side and re-validated against the staff profile on each request.
 
 ## Important constraints (project requirements)
 - MongoDB only (no PostgreSQL/Prisma/MySQL/Supabase/Firebase)
@@ -121,5 +119,4 @@ Automated tests can validate server price authority, reservation concurrency, id
 
 - `npm run typecheck` ✓
 - `npm run lint` ✓
-- `npm run build` ✓ (Next.js 16.3.5 Turbopack; 44 static pages). All phases integrated.
-- See [FINAL PROJECT REPORT](/FINAL_PROJECT_REPORT.md) for the full route/model/RBAC inventory, security notes, env vars, commands, and per-suite test results.
+- `npm run build` ✓ (Next.js 16.3.5 Turbopack; 44 static pages). All phases integrated.- See [FINAL PROJECT REPORT](/FINAL_PROJECT_REPORT.md) for the full route/model/RBAC inventory, security notes, env vars, commands, and per-suite test results.

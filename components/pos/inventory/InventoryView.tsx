@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { PaginationControl } from "@/components/pos/Pagination";
+import { CategoryManagerDialog } from "@/components/pos/inventory/CategoryManagerDialog";
 import { InventoryProductForm } from "@/components/pos/inventory/InventoryProductForm";
+import { StockAdjustmentDialog } from "@/components/pos/inventory/StockAdjustmentDialog";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { ProductImage } from "@/components/common/ProductImage";
@@ -39,11 +41,14 @@ export function InventoryView({ staffName }: { staffName: string }) {
   const [active, setActive] = useState<ActiveFilter>("all");
   const [type, setType] = useState<InventoryTypeFilter | "all">("all");
   const [featured, setFeatured] = useState<"all" | "featured">("all");
+  const [lowStockOnly, setLowStockOnly] = useState(false);
 
   const [reloadKey, setReloadKey] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<InventoryProduct | null>(null);
+  const [adjustingProduct, setAdjustingProduct] = useState<InventoryProduct | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -61,6 +66,7 @@ export function InventoryView({ staffName }: { staffName: string }) {
       if (active !== "all") params.set("active", active === "active" ? "true" : "false");
       if (type !== "all") params.set("type", type);
       if (featured === "featured") params.set("featured", "true");
+      if (lowStockOnly) params.set("lowStockOnly", "true");
 
       const result = await getJson<InventoryListResult>(`/api/pos/inventory?${params.toString()}`);
       if (cancelled) return;
@@ -79,7 +85,7 @@ export function InventoryView({ staffName }: { staffName: string }) {
     return () => {
       cancelled = true;
     };
-  }, [debouncedSearch, categoryId, active, type, featured, page, reloadKey]);
+  }, [debouncedSearch, categoryId, active, type, featured, lowStockOnly, page, reloadKey]);
 
   const onSaved = useCallback(
     (updated: InventoryProduct) => {
@@ -112,14 +118,19 @@ export function InventoryView({ staffName }: { staffName: string }) {
             {summary} · managed by <span className="font-semibold">{staffName}</span>
           </p>
         </div>
-        <Button
-          onClick={() => {
-            setEditingProduct(null);
-            setFormOpen(true);
-          }}
-        >
-          Add product
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="secondary" onClick={() => setCategoryDialogOpen(true)}>
+            Categories
+          </Button>
+          <Button
+            onClick={() => {
+              setEditingProduct(null);
+              setFormOpen(true);
+            }}
+          >
+            Add product
+          </Button>
+        </div>
       </header>
 
       {toast ? (
@@ -130,11 +141,11 @@ export function InventoryView({ staffName }: { staffName: string }) {
 
       <div className="mt-6 rounded-2xl border border-slate-200 bg-white">
         <div className="flex flex-col gap-3 border-b border-slate-200 p-4">
-          <div className="flex flex-col gap-3 sm:flex-row">
+          <div className="flex flex-col gap-3 sm:flex-row flex-wrap">
             <input
               type="search"
               aria-label="Search inventory"
-              placeholder="Search by name, SKU or description…"
+              placeholder="Search by name, SKU, or barcode…"
               value={search}
               onChange={(event) => {
                 setSearch(event.target.value);
@@ -194,6 +205,16 @@ export function InventoryView({ staffName }: { staffName: string }) {
             >
               {featured === "featured" ? "Featured ★" : "Featured"}
             </Button>
+            <Button
+              variant={lowStockOnly ? "primary" : "secondary"}
+              size="md"
+              onClick={() => {
+                setLowStockOnly((current) => !current);
+                setPage(1);
+              }}
+            >
+              {lowStockOnly ? "Low Stock ⚠" : "Low Stock"}
+            </Button>
           </div>
         </div>
 
@@ -247,11 +268,21 @@ export function InventoryView({ staffName }: { staffName: string }) {
                           </div>
                           <div className="min-w-0">
                             <p className="truncate font-semibold text-slate-900">{product.name}</p>
-                            <p className="truncate text-xs text-slate-500">{product.categoryName}</p>
+                            <p className="truncate text-xs text-slate-500">
+                              {product.categoryName}
+                              {product.unit ? ` · ${product.unit}` : ""}
+                            </p>
                           </div>
                         </div>
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-700">{product.sku}</td>
+                      <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-700">
+                        {product.sku}
+                        {product.barcode ? (
+                          <span className="block text-xs font-normal text-slate-400">
+                            {product.barcode}
+                          </span>
+                        ) : null}
+                      </td>
                       <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-slate-900">
                         <Price amountInPaise={product.priceInPaise} />
                       </td>
@@ -261,10 +292,12 @@ export function InventoryView({ staffName }: { staffName: string }) {
                       <td className="whitespace-nowrap px-4 py-3 text-right">
                         {product.isService ? (
                           <span className="text-slate-400">—</span>
-                        ) : product.stock > 0 ? (
-                          <span className="font-bold text-emerald-700">{product.stock}</span>
+                        ) : product.stock <= 0 ? (
+                          <span className="font-bold text-rose-600">0 (Out)</span>
+                        ) : product.isLowStock ? (
+                          <span className="font-bold text-amber-700">{product.stock} (Low)</span>
                         ) : (
-                          <span className="font-bold text-rose-600">0</span>
+                          <span className="font-bold text-emerald-700">{product.stock}</span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-center">
@@ -282,16 +315,27 @@ export function InventoryView({ staffName }: { staffName: string }) {
                         {formatDate(product.updatedAt)}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setEditingProduct(product);
-                            setFormOpen(true);
-                          }}
-                        >
-                          Edit
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          {!product.isService ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setAdjustingProduct(product)}
+                            >
+                              Adjust
+                            </Button>
+                          ) : null}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setEditingProduct(product);
+                              setFormOpen(true);
+                            }}
+                          >
+                            Edit
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -308,6 +352,18 @@ export function InventoryView({ staffName }: { staffName: string }) {
         )}
       </div>
 
+      {categoryDialogOpen ? (
+        <CategoryManagerDialog
+          onClose={() => setCategoryDialogOpen(false)}
+          onCreated={(category) => {
+            setCategories((current) =>
+              [...current, category].sort((a, b) => a.name.localeCompare(b.name)),
+            );
+            setReloadKey((current) => current + 1);
+          }}
+        />
+      ) : null}
+
       {formOpen ? (
         <InventoryProductForm
           product={editingProduct}
@@ -317,6 +373,18 @@ export function InventoryView({ staffName }: { staffName: string }) {
             setEditingProduct(null);
           }}
           onSaved={onSaved}
+        />
+      ) : null}
+
+      {adjustingProduct ? (
+        <StockAdjustmentDialog
+          product={adjustingProduct}
+          onClose={() => setAdjustingProduct(null)}
+          onSaved={(updated) => {
+            setAdjustingProduct(null);
+            setToast(`Stock adjusted for ${updated.name}.`);
+            setReloadKey((c) => c + 1);
+          }}
         />
       ) : null}
     </div>

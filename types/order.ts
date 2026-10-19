@@ -23,6 +23,10 @@ export interface OrderItemSnapshotView {
   quantity: number;
   unitPriceInPaise: number;
   lineTotalInPaise: number;
+  taxRate?: number;
+  taxInPaise?: number;
+  discountInPaise?: number;
+  unit?: string;
   isService: boolean;
 }
 
@@ -150,6 +154,8 @@ export interface StaffOrderDetail {
   discountInPaise: number;
   taxInPaise: number;
   totalInPaise: number;
+  amountPaidInPaise?: number;
+  changeInPaise?: number;
   itemCount: number;
   notes: string;
   /** Staff snapshot for an in-store sale; null for online orders. */

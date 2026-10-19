@@ -55,8 +55,8 @@ export function SiteFooter() {
         </div>
 
         <p className="mt-10 border-t border-slate-800 pt-6 text-xs text-slate-500">
-          &copy; {new Date().getFullYear()} Nexora. Prices include applicable taxes. Online orders
-          are completed through secure prepaid checkout.
+          &copy; {new Date().getFullYear()} Nexora. Prices include applicable taxes. Payments are
+          recorded offline at delivery, collection, or by verified transfer.
         </p>
       </div>
     </footer>

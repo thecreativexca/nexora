@@ -3,23 +3,27 @@ import "server-only";
 import { Types } from "mongoose";
 
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
+import { AUDIT_ACTION } from "@/lib/constants/audit";
 import {
-  AUDIT_ACTION,
-} from "@/lib/constants/audit";
-import {
+  ALL_STAFF_PERMISSIONS,
   INVALID_STAFF_CREDENTIALS_MESSAGE,
   LOGIN_LOCKOUT_MS,
   MAX_LOGIN_FAILURES,
   STAFF_ROLE,
+  isAdminRole,
+  resolveEffectivePermissions,
+  staffCanAddRole,
   staffCanChangeRole,
   staffCanManageActive,
-  staffRoleRequiresMfa,
+  staffCanManagePermissions,
+  type StaffPermission,
   type StaffRole,
 } from "@/lib/constants/staff";
 import { connectDB } from "@/lib/db/mongodb";
 import { recordAudit } from "@/lib/services/audit.service";
 import { toDatabaseError } from "@/lib/services/service-errors";
 import {
+  EmailTakenError,
   ForbiddenError,
   InvalidCredentialsError,
   NotFoundError,
@@ -30,10 +34,8 @@ import {
 import { logger } from "@/lib/utils/logger";
 import { normalizeEmail } from "@/lib/validations/common";
 import { StaffProfile } from "@/models/StaffProfile";
-import type {
-  StaffAuthResult,
-  StaffView,
-} from "@/types/staff";
+import { StaffSession } from "@/models/StaffSession";
+import type { StaffAuthResult, StaffView } from "@/types/staff";
 
 /** Lean read-only views produced by `.lean()` queries. */
 export interface LeanStaff {
@@ -42,8 +44,10 @@ export interface LeanStaff {
   name: string;
   role: StaffRole;
   isActive: boolean;
-  mfaEnabled: boolean;
-  mfaVerifiedAt?: Date | null;
+  /** Explicitly granted permissions beyond role defaults. */
+  permissionGrants: StaffPermission[];
+  /** Explicitly denied permissions from role defaults. */
+  permissionDenies: StaffPermission[];
   lastLoginAt?: Date | null;
   invitedBy?: Types.ObjectId | null;
   createdAt: Date;
@@ -51,7 +55,6 @@ export interface LeanStaff {
 
 export interface LeanStaffWithHash extends LeanStaff {
   passwordHash?: string;
-  mfaSecretEncrypted?: string | null;
   failedLoginCount?: number;
   lockedUntil?: Date | null;
 }
@@ -68,18 +71,26 @@ async function ensureDatabase(): Promise<void> {
   }
 }
 
-/** Only ever returns fields that are safe to send to the browser. */
+/**
+ * Only ever returns fields that are safe to send to the browser.
+ * Phase 2: resolves effective permissions (role defaults + grants - denies).
+ * Admin roles ignore denies — an Admin can never be locked out of a permission.
+ */
 export function toStaffView(staff: LeanStaff): StaffView {
+  const grants = staff.permissionGrants ?? [];
+  // Admins: denies are ignored to prevent lock-out
+  const denies = isAdminRole(staff.role) ? [] : (staff.permissionDenies ?? []);
+  const effectivePermissions = resolveEffectivePermissions(staff.role, grants, denies);
+
   return {
     id: String(staff._id),
     email: staff.email,
     name: staff.name,
     role: staff.role,
     isActive: staff.isActive,
-    mfaEnabled: staff.mfaEnabled,
-    mfaVerifiedAt: staff.mfaVerifiedAt
-      ? new Date(staff.mfaVerifiedAt).toISOString()
-      : null,
+    effectivePermissions,
+    permissionGrants: grants,
+    permissionDenies: denies,
     lastLoginAt: staff.lastLoginAt
       ? new Date(staff.lastLoginAt).toISOString()
       : null,
@@ -104,13 +115,7 @@ export async function getStaffViewById(id: string): Promise<StaffView | null> {
 }
 
 function toAuthResult(staff: LeanStaff): StaffAuthResult {
-  const view = toStaffView(staff);
-  if (!staffRoleRequiresMfa(staff.role)) {
-    return { staff: view, nextStep: "COMPLETE" };
-  }
-  // Two-step sign-in is email-OTP based: every login for Manager / Super-Admin
-  // goes through a fresh code, so there is no enrolment step.
-  return { staff: view, nextStep: "MFA_VERIFY" };
+  return { staff: toStaffView(staff) };
 }
 
 /**
@@ -218,11 +223,11 @@ export async function bootstrapSuperAdmin(input: {
         $set: {
           name: input.name.trim(),
           passwordHash,
-          role: STAFF_ROLE.SUPER_ADMIN,
+          // Use canonical ADMIN role; SUPER_ADMIN is the legacy alias
+          role: STAFF_ROLE.ADMIN,
           isActive: true,
-          mfaEnabled: false,
-          mfaSecretEncrypted: null,
-          mfaVerifiedAt: null,
+          permissionGrants: [],
+          permissionDenies: [],
           passwordChangedAt: now,
           failedLoginCount: 0,
           lockedUntil: null,
@@ -237,19 +242,20 @@ export async function bootstrapSuperAdmin(input: {
       actorStaffId: String(updated._id),
       action: AUDIT_ACTION.SUPER_ADMIN_BOOTSTRAPPED,
       targetStaffId: String(updated._id),
+      metadata: { role: STAFF_ROLE.ADMIN },
     });
 
-    logger.info("Super-Admin bootstrapped", { staffId: String(updated._id) });
+    logger.info("Admin bootstrapped", { staffId: String(updated._id) });
     return toStaffView(updated);
   } catch (error) {
     if (isAppError(error)) throw error;
     if (isDuplicateKeyError(error)) throw new StaffManagementFailedError(undefined, error);
-    logger.error("Super-Admin bootstrap failed", error);
+    logger.error("Admin bootstrap failed", error);
     throw new StaffManagementFailedError(undefined, error);
   }
 }
 
-/** All staff, newest first. Never includes hashes or MFA secrets. */
+/** All staff, newest first. Never includes password hashes. */
 export async function listStaff(): Promise<StaffView[]> {
   await ensureDatabase();
   try {
@@ -259,6 +265,71 @@ export async function listStaff(): Promise<StaffView[]> {
     return staff.map(toStaffView);
   } catch (error) {
     throw toDatabaseError(error);
+  }
+}
+
+/**
+ * Creates a staff account directly from the Team Access screen. The admin
+ * chooses the initial password and shares it with the new team member, so no
+ * invitation code / e-mail hand-off is involved.
+ */
+export async function createStaffMember(
+  actor: StaffView,
+  input: { name: string; email: string; password: string; role: StaffRole },
+): Promise<StaffView> {
+  await ensureDatabase();
+
+  if (!staffCanAddRole(actor.role, input.role)) {
+    throw new ForbiddenError("You are not allowed to add a team member with that role.");
+  }
+
+  const email = normalizeEmail(input.email);
+  const role = input.role === STAFF_ROLE.CASHIER ? STAFF_ROLE.SELLER : input.role;
+
+  try {
+    const existing = await StaffProfile.findOne({ email })
+      .select("_id")
+      .lean<{ _id: Types.ObjectId } | null>();
+    if (existing) {
+      throw new EmailTakenError("A staff member with this email already exists.");
+    }
+
+    const passwordHash = await hashPassword(input.password);
+    const created = await StaffProfile.create({
+      email,
+      passwordHash,
+      name: input.name.trim(),
+      role,
+      isActive: true,
+      permissionGrants: [],
+      permissionDenies: [],
+      invitedBy: new Types.ObjectId(actor.id),
+      passwordChangedAt: new Date(),
+    });
+
+    recordAudit({
+      actorStaffId: actor.id,
+      action: AUDIT_ACTION.STAFF_ACCOUNT_CREATED,
+      targetStaffId: String(created._id),
+      metadata: { role, source: "team" },
+    });
+
+    logger.info("Staff member created by admin", {
+      staffId: String(created._id),
+      actorStaffId: actor.id,
+    });
+
+    return toStaffView(created.toObject() as unknown as LeanStaff);
+  } catch (error) {
+    if (isAppError(error)) throw error;
+    if (isDuplicateKeyError(error)) {
+      throw new EmailTakenError("A staff member with this email already exists.");
+    }
+    logger.error("Creating staff member failed", error);
+    throw new StaffManagementFailedError(
+      "We could not add that team member. Please try again.",
+      error,
+    );
   }
 }
 
@@ -294,6 +365,17 @@ export async function setStaffActive(
     throw new ForbiddenError("You are not allowed to change this account's access.");
   }
 
+  // Prevent deactivation of the last active Admin
+  if (!isActive && isAdminRole(target.role)) {
+    const activeAdminsCount = await StaffProfile.countDocuments({
+      role: { $in: [STAFF_ROLE.ADMIN, STAFF_ROLE.SUPER_ADMIN] },
+      isActive: true,
+    });
+    if (activeAdminsCount <= 1) {
+      throw new ForbiddenError("Cannot deactivate the last active Administrator.");
+    }
+  }
+
   try {
     const updated = await StaffProfile.findByIdAndUpdate(
       target._id,
@@ -301,6 +383,11 @@ export async function setStaffActive(
       { returnDocument: "after", runValidators: true },
     ).lean<LeanStaff | null>();
     if (!updated) throw new StaffManagementFailedError();
+
+    // Revoke all sessions for deactivated accounts immediately
+    if (!isActive) {
+      await StaffSession.deleteMany({ staffId: target._id });
+    }
 
     recordAudit({
       actorStaffId: actor.id,
@@ -335,6 +422,17 @@ export async function changeStaffRole(
     throw new ForbiddenError("You are not allowed to change this account's role.");
   }
 
+  // Prevent demotion of the last active Admin
+  if (isAdminRole(target.role) && !isAdminRole(newRole)) {
+    const activeAdminsCount = await StaffProfile.countDocuments({
+      role: { $in: [STAFF_ROLE.ADMIN, STAFF_ROLE.SUPER_ADMIN] },
+      isActive: true,
+    });
+    if (activeAdminsCount <= 1) {
+      throw new ForbiddenError("Cannot demote the last active Administrator.");
+    }
+  }
+
   try {
     const updated = await StaffProfile.findByIdAndUpdate(
       target._id,
@@ -342,6 +440,9 @@ export async function changeStaffRole(
       { returnDocument: "after", runValidators: true },
     ).lean<LeanStaff | null>();
     if (!updated) throw new StaffManagementFailedError();
+
+    // Invalidate existing sessions so role change and new permissions take effect immediately
+    await StaffSession.deleteMany({ staffId: target._id });
 
     recordAudit({
       actorStaffId: actor.id,
@@ -354,6 +455,52 @@ export async function changeStaffRole(
   } catch (error) {
     if (isAppError(error)) throw error;
     logger.error("Staff role change failed", error);
+    throw new StaffManagementFailedError(undefined, error);
+  }
+}
+
+export async function setStaffPermissions(
+  actor: StaffView,
+  targetId: string,
+  permissionGrants: StaffPermission[],
+  permissionDenies: StaffPermission[],
+): Promise<StaffView> {
+  const { target } = await loadStaffForManagement(actor, targetId);
+
+  if (!staffCanManagePermissions(actor.role, actor.id, String(target._id))) {
+    throw new ForbiddenError("You are not allowed to configure permissions for this account.");
+  }
+
+  if (isAdminRole(target.role)) {
+    throw new ForbiddenError("Administrator permissions cannot be customized or restricted.");
+  }
+
+  // Filter to valid permissions only (deny-by-default for unknown strings)
+  const validGrants = permissionGrants.filter((p) => (ALL_STAFF_PERMISSIONS as readonly StaffPermission[]).includes(p));
+  const validDenies = permissionDenies.filter((p) => (ALL_STAFF_PERMISSIONS as readonly StaffPermission[]).includes(p));
+
+  try {
+    const updated = await StaffProfile.findByIdAndUpdate(
+      target._id,
+      { $set: { permissionGrants: validGrants, permissionDenies: validDenies } },
+      { returnDocument: "after", runValidators: true },
+    ).lean<LeanStaff | null>();
+    if (!updated) throw new StaffManagementFailedError();
+
+    // Invalidate sessions so updated permissions take effect immediately on next request
+    await StaffSession.deleteMany({ staffId: target._id });
+
+    recordAudit({
+      actorStaffId: actor.id,
+      action: AUDIT_ACTION.STAFF_PERMISSIONS_UPDATED,
+      targetStaffId: String(target._id),
+      metadata: { grants: validGrants, denies: validDenies },
+    });
+
+    return toStaffView(updated);
+  } catch (error) {
+    if (isAppError(error)) throw error;
+    logger.error("Staff permission update failed", error);
     throw new StaffManagementFailedError(undefined, error);
   }
 }

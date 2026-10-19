@@ -11,7 +11,6 @@ import {
   STAFF_SESSION_COOKIE,
   STAFF_SESSION_TTL_MS,
   staffHasPermission,
-  staffRoleRequiresMfa,
   type StaffPermission,
 } from "@/lib/constants/staff";
 import { connectDB } from "@/lib/db/mongodb";
@@ -31,9 +30,7 @@ import type { StaffView } from "@/types/staff";
  * different security domains and never share cookies or identity.
  *
  * Strategy: opaque random token in an HttpOnly cookie + SHA-256 hash stored in
- * MongoDB. A full staff session is created ONLY after any mandatory MFA step
- * completes, so a session cookie always means "MFA satisfied" for roles that
- * require it.
+ * MongoDB. A session is created immediately after password authentication.
  */
 
 function hashToken(token: string): string {
@@ -50,17 +47,10 @@ function cookieOptions(expiresAt: Date) {
   };
 }
 
-/**
- * Creates a fresh staff session and sets the auth cookie.
- *
- * `mfaVerified` marks a session that was issued only after a valid one-time
- * code. Roles that require MFA must hold such a session; `loadCurrentStaff`
- * nulls out any MFA-required session that was not verified.
- */
+/** Creates a fresh staff session and sets the auth cookie. */
 export async function createStaffSession(
   staffId: string,
   ttlMs: number = STAFF_SESSION_TTL_MS,
-  mfaVerified = false,
 ): Promise<void> {
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + ttlMs);
@@ -70,7 +60,6 @@ export async function createStaffSession(
     staffId: new Types.ObjectId(staffId),
     tokenHash: hashToken(token),
     expiresAt,
-    mfaVerified,
   });
 
   const cookieStore = await cookies();
@@ -99,11 +88,6 @@ export async function destroyStaffSession(): Promise<void> {
  * the session expired, the staff record vanished, or the staff member has been
  * deactivated - so disabled accounts lose portal access on their very next
  * request (fresh database check, never a stale cookie value).
- *
- * MFA enforcement lives here: for roles that must verify two-step auth, the
- * session itself must have been created by the MFA flow (`mfaVerified`). A
- * Cashier promoted to Manager therefore gets NULL on their next request with
- * the old session cookie and is routed back through a full login + MFA.
  */
 async function loadCurrentStaff(): Promise<StaffView | null> {
   const cookieStore = await cookies();
@@ -115,13 +99,12 @@ async function loadCurrentStaff(): Promise<StaffView | null> {
     const session = await StaffSession.findOne({
       tokenHash: hashToken(token),
       expiresAt: { $gt: new Date() },
-    }).lean<{ staffId: Types.ObjectId; mfaVerified: boolean } | null>();
+    }).lean<{ staffId: Types.ObjectId } | null>();
 
     if (!session) return null;
 
     const staff = await getStaffProfileById(String(session.staffId));
     if (!staff || !staff.isActive) return null;
-    if (staffRoleRequiresMfa(staff.role) && !session.mfaVerified) return null;
     return toStaffView(staff);
   } catch (error) {
     logger.error("Failed to resolve staff session", error);
@@ -142,7 +125,10 @@ export async function requireStaff(): Promise<StaffView> {
 /** Page-level permission gate. Unauthorised users land on their dashboard. */
 export async function requirePermission(permission: StaffPermission): Promise<StaffView> {
   const staff = await requireStaff();
-  if (!staffHasPermission(staff.role, permission)) redirect("/pos");
+  const allowed = staff.effectivePermissions
+    ? staff.effectivePermissions.includes(permission)
+    : staffHasPermission(staff.role, permission);
+  if (!allowed) redirect("/pos");
   return staff;
 }
 
@@ -157,6 +143,9 @@ export async function requirePermissionApi(
   permission: StaffPermission,
 ): Promise<StaffView> {
   const staff = await requireStaffApi();
-  if (!staffHasPermission(staff.role, permission)) throw new ForbiddenError();
+  const allowed = staff.effectivePermissions
+    ? staff.effectivePermissions.includes(permission)
+    : staffHasPermission(staff.role, permission);
+  if (!allowed) throw new ForbiddenError();
   return staff;
 }

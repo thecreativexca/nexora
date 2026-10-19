@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { Price } from "@/components/ui/Price";
 import { formatDateTime } from "@/lib/utils/format";
 import { formatMoney } from "@/lib/utils/money";
+import { PAYMENT_METHOD } from "@/lib/constants/order";
 import type { PosReceipt } from "@/types/pos";
 
 export function ReceiptPanel({
@@ -14,36 +15,53 @@ export function ReceiptPanel({
   receipt: PosReceipt;
   onNewSale: () => void;
 }) {
+  const showChange = receipt.paymentMethod === PAYMENT_METHOD.CASH && receipt.changeInPaise > 0;
+  const isPendingVerification = receipt.paymentStatus === "PENDING_VERIFICATION";
+  const hasDues = (receipt.outstandingDueInPaise ?? 0) > 0;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" role="dialog" aria-modal="true" aria-label="Sale receipt">
-      <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 print:p-0 print:bg-white print:fixed print:inset-0"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Sale receipt"
+    >
+      <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl print:shadow-none print:max-h-none print:max-w-none print:p-2">
         <div className="border-b border-dashed border-slate-300 pb-4 text-center">
           <h2 className="text-xl font-black tracking-tight text-slate-900">Nexora</h2>
           <p className="text-xs font-medium uppercase tracking-widest text-slate-500">
-            In-store receipt
+            In-store receipt / Invoice
           </p>
         </div>
 
         <div className="border-b border-dashed border-slate-300 py-4 text-center">
           <p className="text-2xl font-black tracking-wide text-slate-900">{receipt.orderNumber}</p>
           <p className="mt-1 text-sm text-slate-600">{formatDateTime(receipt.createdAt)}</p>
-          <div className="mt-2 flex items-center justify-center gap-2">
+          <div className="mt-2 flex items-center justify-center gap-2 print:hidden">
             <Badge tone="success">{receipt.statusLabel}</Badge>
-            <Badge tone="success">{receipt.paymentMethodLabel} · {receipt.paymentStatusLabel}</Badge>
+            <Badge tone={isPendingVerification ? "warning" : "success"}>
+              {receipt.paymentMethodLabel} · {receipt.paymentStatusLabel}
+            </Badge>
           </div>
+          {isPendingVerification ? (
+            <p className="mt-2 text-xs text-amber-700">
+              ⚠ Payment pending manual verification by staff.
+            </p>
+          ) : null}
         </div>
 
-        {(receipt.customerName || receipt.customerEmail || receipt.staffName) ? (
-          <div className="border-b border-dashed border-slate-300 py-4 text-sm text-slate-700">
+        {(receipt.customerName || receipt.customerEmail || receipt.customerPhone || receipt.staffName) ? (
+          <div className="border-b border-dashed border-slate-300 py-4 text-sm text-slate-700 space-y-1">
             {receipt.customerName ? (
               <p>
                 <span className="font-semibold">Customer:</span> {receipt.customerName}
+                {receipt.customerPhone ? ` · ${receipt.customerPhone}` : ""}
                 {receipt.customerEmail ? ` · ${receipt.customerEmail}` : ""}
               </p>
             ) : null}
             {receipt.staffName ? (
               <p>
-                <span className="font-semibold">Served by:</span> {receipt.staffName}
+                <span className="font-semibold">Billed by:</span> {receipt.staffName}
               </p>
             ) : null}
           </div>
@@ -55,7 +73,8 @@ export function ReceiptPanel({
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-slate-900">{item.productName}</p>
                 <p className="text-xs text-slate-500">
-                  {item.sku} × {item.quantity}
+                  {item.sku} × {item.quantity} {item.unit || "Piece"}
+                  {item.taxRate && item.taxRate > 0 ? ` (GST ${item.taxRate}%)` : ""}
                 </p>
               </div>
               <div className="text-right">
@@ -71,20 +90,78 @@ export function ReceiptPanel({
             <span>Subtotal ({receipt.itemCount} {receipt.itemCount === 1 ? "item" : "items"})</span>
             <Price amountInPaise={receipt.subtotalInPaise} className="font-semibold text-slate-900" />
           </div>
-          <div className="flex items-center justify-between">
+
+          {receipt.taxInPaise > 0 ? (
+            <div className="flex items-center justify-between text-sm text-slate-600">
+              <span>Taxes (GST)</span>
+              <span className="font-semibold text-slate-900">{formatMoney(receipt.taxInPaise)}</span>
+            </div>
+          ) : null}
+
+          {receipt.discountInPaise > 0 ? (
+            <div className="flex items-center justify-between text-sm text-emerald-700">
+              <span>Discount</span>
+              <span className="font-semibold">-{formatMoney(receipt.discountInPaise)}</span>
+            </div>
+          ) : null}
+
+          <div className="flex items-center justify-between border-t border-slate-200 pt-1.5">
             <span className="text-base font-bold text-slate-900">Total</span>
             <span className="text-xl font-black text-slate-900">
               {formatMoney(receipt.totalInPaise)}
             </span>
           </div>
+
+          {/* Cash payment breakdown */}
+          {receipt.paymentMethod === PAYMENT_METHOD.CASH && receipt.amountPaidInPaise > 0 ? (
+            <>
+              <div className="flex items-center justify-between text-sm text-slate-600">
+                <span>Cash received</span>
+                <span className="font-semibold text-slate-900">
+                  {formatMoney(receipt.amountPaidInPaise + receipt.changeInPaise)}
+                </span>
+              </div>
+              {showChange ? (
+                <div className="flex items-center justify-between rounded-lg bg-emerald-50 px-3 py-2">
+                  <span className="text-sm font-semibold text-emerald-800">Change returned</span>
+                  <span className="text-base font-black text-emerald-900">{formatMoney(receipt.changeInPaise)}</span>
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <div className="flex items-center justify-between text-sm text-slate-600">
+              <span>Amount Paid</span>
+              <span className="font-semibold text-slate-900">{formatMoney(receipt.amountPaidInPaise)}</span>
+            </div>
+          )}
+
+          {hasDues ? (
+            <div className="flex items-center justify-between rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              <span className="font-semibold">Balance Due</span>
+              <span className="font-bold text-amber-900">{formatMoney(receipt.outstandingDueInPaise)}</span>
+            </div>
+          ) : null}
+
           <p className="pt-2 text-xs text-slate-500">
-            Paid via {receipt.paymentMethodLabel}. Thank you for shopping with Nexora.
+            {isPendingVerification
+              ? `Payment via ${receipt.paymentMethodLabel} — pending verification. Thank you for shopping with Nexora.`
+              : `Paid via ${receipt.paymentMethodLabel}. Thank you for shopping with Nexora.`}
           </p>
         </div>
 
-        <Button fullWidth size="lg" className="mt-6" onClick={onNewSale}>
-          New sale
-        </Button>
+        <div className="mt-6 flex items-center gap-3 print:hidden">
+          <Button
+            variant="secondary"
+            size="lg"
+            className="flex-1"
+            onClick={() => window.print()}
+          >
+            Print receipt
+          </Button>
+          <Button size="lg" className="flex-1" onClick={onNewSale}>
+            New sale
+          </Button>
+        </div>
       </div>
     </div>
   );

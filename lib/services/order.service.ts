@@ -10,23 +10,29 @@ import {
   ORDER_STATUS,
   ORDER_STATUS_LABELS,
   ORDER_STATUS_TONES,
+  PAYMENT_METHOD,
   PAYMENT_METHOD_LABELS,
   PAYMENT_STATUS,
   PAYMENT_STATUS_LABELS,
+  computePaymentStatus,
   isActiveOrderStatus,
+  methodIsPendingVerification,
   type OrderChannel,
   type OrderStatus,
   type PaymentMethod,
   type PaymentStatus,
 } from "@/lib/constants/order";
+import { STAFF_PERMISSION, staffHasPermission } from "@/lib/constants/staff";
 import { connectDB } from "@/lib/db/mongodb";
 import { ensureRequestTime } from "@/lib/db/request-time";
 import { recordAudit } from "@/lib/services/audit.service";
+import { recordStockMovement } from "@/lib/services/stock-movement.service";
 import { toDatabaseError } from "@/lib/services/service-errors";
 import {
   isAppError,
   isDuplicateKeyError,
   isTransactionUnsupportedError,
+  ForbiddenError,
   InvalidRequestError,
   NotFoundError,
   OrderCreationFailedError,
@@ -39,7 +45,8 @@ import { generateOrderNumber, isWellFormedOrderNumber } from "@/lib/utils/order-
 import { normalizeEmail, normalizePhone } from "@/lib/validations/common";
 import type { CheckoutPayload } from "@/lib/validations/order";
 import type { PosSaleRequest } from "@/lib/validations/pos";
-import { Order, type OrderItemSnapshot } from "@/models/Order";
+import { Customer } from "@/models/Customer";
+import { Order, type OrderItemSnapshot, type OrderPaymentEntry } from "@/models/Order";
 import { Product } from "@/models/Product";
 import type {
   CustomerOrderSummary,
@@ -54,9 +61,12 @@ interface LeanProductForOrder {
   _id: Types.ObjectId;
   name: string;
   sku: string;
+  barcode?: string;
   image?: string;
   priceInPaise: number;
   stock: number;
+  taxRate?: number;
+  unit?: string;
   isService?: boolean;
   isActive?: boolean;
 }
@@ -69,6 +79,10 @@ interface LeanOrderItem {
   quantity: number;
   unitPriceInPaise: number;
   lineTotalInPaise: number;
+  taxRate?: number;
+  taxInPaise?: number;
+  discountInPaise?: number;
+  unit?: string;
   isService?: boolean;
 }
 
@@ -78,6 +92,8 @@ export interface LeanOrder {
   status: OrderStatus;
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
+  amountPaidInPaise?: number;
+  changeInPaise?: number;
   customerId?: Types.ObjectId | string | null;
   customerName: string;
   customerEmail: string;
@@ -95,6 +111,8 @@ export interface LeanOrder {
   discountInPaise?: number;
   taxInPaise?: number;
   totalInPaise: number;
+  refundedTotalInPaise?: number;
+  paymentEntries?: OrderPaymentEntry[];
   notes?: string;
   placedByName?: string;
   createdAt: Date;
@@ -109,6 +127,10 @@ function toItemView(item: LeanOrderItem): OrderItemSnapshotView {
     quantity: item.quantity,
     unitPriceInPaise: item.unitPriceInPaise,
     lineTotalInPaise: item.lineTotalInPaise,
+    taxRate: item.taxRate ?? 0,
+    taxInPaise: item.taxInPaise ?? 0,
+    discountInPaise: item.discountInPaise ?? 0,
+    unit: item.unit ?? "Piece",
     isService: Boolean(item.isService),
   };
 }
@@ -183,7 +205,12 @@ function toCustomerOrderSummary(order: LeanOrder): CustomerOrderSummary {
  * Receipt serialisation for a finished POS sale. Only sale-relevant data is
  * returned: product cost, sessions and database internals never leave here.
  */
-function toPosReceipt(order: LeanOrder, fallbackStaffName: string, replayed: boolean): PosReceipt {
+function toPosReceipt(
+  order: LeanOrder,
+  fallbackStaffName: string,
+  replayed: boolean,
+  changeInPaise = 0,
+): PosReceipt {
   const items: PosReceiptItem[] = order.items.map((item) => ({
     productId: String(item.productId),
     productName: item.productName,
@@ -191,8 +218,15 @@ function toPosReceipt(order: LeanOrder, fallbackStaffName: string, replayed: boo
     quantity: item.quantity,
     unitPriceInPaise: item.unitPriceInPaise,
     lineTotalInPaise: item.lineTotalInPaise,
+    taxRate: item.taxRate ?? 0,
+    taxInPaise: item.taxInPaise ?? 0,
+    discountInPaise: item.discountInPaise ?? 0,
+    unit: item.unit ?? "Piece",
     isService: Boolean(item.isService),
   }));
+
+  const amountPaidInPaise = order.amountPaidInPaise ?? order.totalInPaise;
+  const outstandingDueInPaise = Math.max(0, order.totalInPaise - amountPaidInPaise);
 
   return {
     orderNumber: order.orderNumber,
@@ -202,12 +236,19 @@ function toPosReceipt(order: LeanOrder, fallbackStaffName: string, replayed: boo
     paymentMethodLabel: PAYMENT_METHOD_LABELS[order.paymentMethod],
     paymentStatus: order.paymentStatus,
     paymentStatusLabel: PAYMENT_STATUS_LABELS[order.paymentStatus],
+    customerId: order.customerId ? String(order.customerId) : null,
     customerName: order.customerName.trim() ? order.customerName : null,
     customerEmail: order.customerEmail.trim() ? order.customerEmail : null,
+    customerPhone: order.customerPhone?.trim() || null,
     staffName: order.placedByName?.trim() || fallbackStaffName || null,
     items,
     subtotalInPaise: order.subtotalInPaise,
+    discountInPaise: order.discountInPaise ?? 0,
+    taxInPaise: order.taxInPaise ?? 0,
     totalInPaise: order.totalInPaise,
+    amountPaidInPaise,
+    outstandingDueInPaise,
+    changeInPaise: order.changeInPaise ?? changeInPaise,
     itemCount: order.items.reduce((count, item) => count + item.quantity, 0),
     createdAt: new Date(order.createdAt).toISOString(),
     replayed,
@@ -257,6 +298,10 @@ function buildOrderSnapshots(
       continue;
     }
 
+    const taxRate = typeof product.taxRate === "number" ? product.taxRate : 0;
+    const lineTotalInPaise = product.priceInPaise * line.quantity;
+    const taxInPaise = Math.round((lineTotalInPaise * taxRate) / 100);
+
     items.push({
       productId: product._id,
       productName: product.name,
@@ -264,7 +309,11 @@ function buildOrderSnapshots(
       image: product.image ?? "",
       quantity: line.quantity,
       unitPriceInPaise: product.priceInPaise,
-      lineTotalInPaise: product.priceInPaise * line.quantity,
+      lineTotalInPaise,
+      taxRate,
+      taxInPaise,
+      discountInPaise: 0,
+      unit: product.unit || "Piece",
       isService,
     });
   }
@@ -276,10 +325,12 @@ function buildOrderSnapshots(
  * Atomically reserves physical stock inside a transaction. Services are never
  * decremented. The `stock >= quantity` condition makes overselling impossible;
  * because it runs inside the transaction a later failure rolls the decrement
- * back. Shared by the online checkout and the POS register.
+ * back. Appends an immutable StockMovement ledger entry for each item.
  */
 async function decrementPhysicalStock(
   items: readonly OrderItemSnapshot[],
+  orderNumber: string,
+  staff: { id?: string | null; name: string },
   session: mongoose.ClientSession,
 ): Promise<void> {
   for (const item of items) {
@@ -293,7 +344,7 @@ async function decrementPhysicalStock(
         stock: { $gte: item.quantity },
       },
       { $inc: { stock: -item.quantity } },
-      { session },
+      { session, new: false },
     );
 
     if (!reserved) {
@@ -301,6 +352,24 @@ async function decrementPhysicalStock(
         `Insufficient stock for ${item.productName} (${item.quantity} requested).`,
       );
     }
+
+    await recordStockMovement(
+      {
+        productId: item.productId,
+        productName: item.productName,
+        sku: item.sku,
+        movementType: "SALE",
+        quantityChange: -item.quantity,
+        quantityBefore: reserved.stock,
+        quantityAfter: reserved.stock - item.quantity,
+        referenceId: orderNumber,
+        referenceType: "ORDER",
+        reason: `Sold in order #${orderNumber}`,
+        performedByStaffId: staff.id ?? null,
+        performedByName: staff.name,
+      },
+      session,
+    );
   }
 }
 
@@ -314,6 +383,8 @@ async function decrementPhysicalStock(
  *    atomic update, so two simultaneous checkouts cannot oversell.
  * 3. Inventory + order insert run inside one MongoDB transaction: a failure
  *    leaves no partial order and no partially decremented stock.
+ * 4. Orders are created with UNPAID payment status - payment is recorded
+ *    manually by staff after offline collection.
  *
  * `customerId` is supplied by the server (from the authenticated session), never
  * by the browser, so a request can never attach an order to another account.
@@ -323,9 +394,6 @@ export async function createOnlineOrder(
   payload: CheckoutPayload,
   customerId: string | null = null,
 ): Promise<PlacedOrderSummary> {
-  if (payload.paymentMethod) {
-    throw new InvalidRequestError("Direct online order creation is disabled. Complete payment through PayPal.");
-  }
   await ensureRequestTime();
 
   try {
@@ -341,7 +409,7 @@ export async function createOnlineOrder(
     products = await Product.find({
       _id: { $in: requestedLines.map((line) => new Types.ObjectId(line.productId)) },
     })
-      .select("name sku image priceInPaise stock isService isActive")
+      .select("name sku barcode image priceInPaise stock taxRate unit isService isActive")
       .lean<LeanProductForOrder[]>();
   } catch (error) {
     throw toDatabaseError(error);
@@ -369,15 +437,18 @@ export async function createOnlineOrder(
 
   // Server-side money maths only - browser prices/totals are never trusted.
   const subtotalInPaise = resolved.items.reduce((total, item) => total + item.lineTotalInPaise, 0);
+  const taxInPaise = resolved.items.reduce((total, item) => total + (item.taxInPaise || 0), 0);
   const discountInPaise = 0;
-  const taxInPaise = 0;
   const totalInPaise = subtotalInPaise - discountInPaise + taxInPaise;
+
+  const paymentMethod = payload.paymentMethod ?? PAYMENT_METHOD.CASH;
 
   const orderBase = {
     channel: ORDER_CHANNEL.ONLINE,
     status: ORDER_STATUS.ORDER_PLACED,
-    paymentMethod: payload.paymentMethod,
-    paymentStatus: PAYMENT_STATUS.PENDING,
+    paymentMethod,
+    paymentStatus: PAYMENT_STATUS.UNPAID,
+    amountPaidInPaise: 0,
     customerId:
       customerId && Types.ObjectId.isValid(customerId)
         ? new Types.ObjectId(customerId)
@@ -400,6 +471,7 @@ export async function createOnlineOrder(
     totalInPaise,
     refundedTotalInPaise: 0,
     refunds: [],
+    paymentEntries: [],
     notes: payload.notes ?? "",
     placedByStaffId: null,
   };
@@ -410,10 +482,13 @@ export async function createOnlineOrder(
 
     try {
       const created = await session.withTransaction(async () => {
-        // 1. Atomically reserve physical stock. The `stock >= quantity`
-        //    condition makes overselling impossible, and because it runs
-        //    inside the transaction a later failure rolls the decrement back.
-        await decrementPhysicalStock(resolved.items, session);
+        // 1. Atomically reserve physical stock and record movement
+        await decrementPhysicalStock(
+          resolved.items,
+          orderNumber,
+          { id: null, name: "Online Storefront" },
+          session,
+        );
 
         // 2. Persist the order together with its historical item snapshots.
         const createdOrders = await Order.create([{ ...orderBase, orderNumber }], { session });
@@ -421,9 +496,20 @@ export async function createOnlineOrder(
       });
 
       const order = created.toObject() as unknown as LeanOrder;
-      logger.info("Online order placed", {
+      logger.info("Online order placed (offline payment)", {
         orderNumber: order.orderNumber,
         itemCount: order.items.length,
+        paymentMethod,
+      });
+      await recordAudit({
+        actorStaffId: null,
+        action: AUDIT_ACTION.ONLINE_ORDER_PLACED,
+        metadata: {
+          orderNumber: order.orderNumber,
+          paymentMethod,
+          totalInPaise,
+          customerId: customerId ?? undefined,
+        },
       });
       return toPlacedOrderSummary(order);
     } catch (error) {
@@ -450,15 +536,18 @@ export async function createOnlineOrder(
 }
 
 /**
- * Completes an IN_STORE POS sale.
+ * Places an IN-STORE (POS register) sale.
  *
- * - The authenticated staff member is taken from the session, never the body.
- * - Products are re-read from MongoDB: ids + quantities only are trusted.
- * - Physical stock is decremented with the SAME atomic conditional update the
- *   online checkout uses, inside one MongoDB transaction - a concurrent online
- *   order or another POS terminal can never oversell.
- * - The staff reference, PAID payment state and COMPLETED status are written by
- *   the server, and an idempotency key protects retries from creating two sales.
+ * Runs inside a MongoDB transaction: physical stock is decremented and the
+ * completed order snapshot is persisted atomically.
+ *
+ * Supports:
+ * - Server-side tax calculation per line (GST / taxRate)
+ * - Discount validation with POS_APPLY_DISCOUNT permission check
+ * - Single payment (Cash with change, UPI, Card, Bank Transfer, Cheque)
+ * - Split payments (multiple offline tender types)
+ * - Partial / Due payments with customer ledger updates
+ * - Full audit trail & immutable stock ledger logging
  */
 export async function createInStoreOrder(
   payload: PosSaleRequest,
@@ -482,7 +571,7 @@ export async function createInStoreOrder(
         logger.info("In-store sale replayed from idempotency key", {
           orderNumber: existing.orderNumber,
         });
-        return toPosReceipt(existing, staff.name, true);
+        return toPosReceipt(existing, staff.name, true, existing.changeInPaise ?? 0);
       }
     } catch (error) {
       throw toDatabaseError(error);
@@ -496,7 +585,7 @@ export async function createInStoreOrder(
     products = await Product.find({
       _id: { $in: requestedLines.map((line) => new Types.ObjectId(line.productId)) },
     })
-      .select("name sku image priceInPaise stock isService isActive")
+      .select("name sku barcode image priceInPaise stock taxRate unit isService isActive")
       .lean<LeanProductForOrder[]>();
   } catch (error) {
     throw toDatabaseError(error);
@@ -522,28 +611,147 @@ export async function createInStoreOrder(
     );
   }
 
+  // Subtotal & Taxes
   const subtotalInPaise = resolved.items.reduce((total, item) => total + item.lineTotalInPaise, 0);
+  const taxInPaise = resolved.items.reduce((total, item) => total + (item.taxInPaise || 0), 0);
+
+  // Discount validation & application
+  const requestedDiscount = payload.discountInPaise ?? 0;
+  if (requestedDiscount > 0) {
+    const canApplyDiscount = staff.effectivePermissions
+      ? staff.effectivePermissions.includes(STAFF_PERMISSION.POS_APPLY_DISCOUNT)
+      : staffHasPermission(staff.role, STAFF_PERMISSION.POS_APPLY_DISCOUNT);
+
+    if (!canApplyDiscount) {
+      throw new ForbiddenError("You do not have permission to apply discounts at the POS.");
+    }
+  }
+
+  const discountInPaise = Math.min(requestedDiscount, subtotalInPaise + taxInPaise);
+  const totalInPaise = Math.max(0, subtotalInPaise + taxInPaise - discountInPaise);
+
+  // Customer resolution (optional walk-in or linked account)
+  let customerId: Types.ObjectId | null = null;
+  let customerName = payload.customerName?.trim() ?? "";
+  let customerEmail = payload.customerEmail?.trim().toLowerCase() ?? "";
+  let customerPhone = payload.customerPhone?.trim() ?? "";
+
+  if (payload.customerId && Types.ObjectId.isValid(payload.customerId)) {
+    const existingCustomer = await Customer.findById(payload.customerId).lean();
+    if (existingCustomer) {
+      customerId = existingCustomer._id;
+      if (!customerName) customerName = existingCustomer.name;
+      if (!customerEmail) customerEmail = existingCustomer.email;
+      if (!customerPhone) customerPhone = existingCustomer.phone || "";
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Payment logic (server-side only, decimal-safe integer paise)
+  // -------------------------------------------------------------------------
+  let paymentEntries: OrderPaymentEntry[] = [];
+  let amountPaidInPaise = 0;
+  let changeInPaise = 0;
+  let paymentMethod: PaymentMethod = payload.paymentMethod;
+  let paymentStatus: PaymentStatus = PAYMENT_STATUS.UNPAID;
+
+  if (payload.splitPayments && payload.splitPayments.length > 0) {
+    paymentMethod = PAYMENT_METHOD.SPLIT;
+    let clearedSum = 0;
+    let totalSplitSum = 0;
+
+    for (const split of payload.splitPayments) {
+      totalSplitSum += split.amountInPaise;
+      const isPending = methodIsPendingVerification(split.paymentMethod);
+      if (!isPending) {
+        clearedSum += split.amountInPaise;
+      }
+
+      paymentEntries.push({
+        paymentMethod: split.paymentMethod,
+        amountInPaise: split.amountInPaise,
+        referenceNumber: split.referenceNumber?.trim() ?? "",
+        paymentDate: payload.paymentDate ? new Date(payload.paymentDate) : new Date(),
+        verifiedByStaffId: isPending ? null : new Types.ObjectId(staff.id),
+        verifiedByName: isPending ? "" : staff.name.trim(),
+        notes: split.notes?.trim() ?? "",
+        createdAt: new Date(),
+      });
+    }
+
+    if (totalSplitSum > totalInPaise) {
+      throw new InvalidRequestError(
+        `Split payment total (₹${(totalSplitSum / 100).toFixed(2)}) exceeds bill total (₹${(totalInPaise / 100).toFixed(2)}).`,
+      );
+    }
+
+    amountPaidInPaise = clearedSum;
+    if (amountPaidInPaise === 0 && totalSplitSum > 0) {
+      paymentStatus = PAYMENT_STATUS.PENDING_VERIFICATION;
+    } else {
+      paymentStatus = computePaymentStatus(totalInPaise, amountPaidInPaise, 0);
+    }
+  } else {
+    // Single payment method
+    const isPendingVerification = methodIsPendingVerification(paymentMethod);
+    const isCash = paymentMethod === PAYMENT_METHOD.CASH;
+    const cashReceived = payload.cashReceivedInPaise ?? 0;
+
+    if (isCash && cashReceived > 0) {
+      if (cashReceived >= totalInPaise) {
+        amountPaidInPaise = totalInPaise;
+        changeInPaise = cashReceived - totalInPaise;
+        paymentStatus = PAYMENT_STATUS.PAID;
+      } else {
+        // Partial cash payment
+        amountPaidInPaise = cashReceived;
+        changeInPaise = 0;
+        paymentStatus = PAYMENT_STATUS.PARTIALLY_PAID;
+      }
+    } else if (isPendingVerification) {
+      amountPaidInPaise = 0;
+      paymentStatus = PAYMENT_STATUS.PENDING_VERIFICATION;
+    } else {
+      // Full clearance for card, UPI, bank, or cash without change input
+      amountPaidInPaise = totalInPaise;
+      paymentStatus = PAYMENT_STATUS.PAID;
+    }
+
+    paymentEntries = [
+      {
+        paymentMethod,
+        amountInPaise: amountPaidInPaise,
+        referenceNumber: payload.referenceNumber?.trim() ?? "",
+        paymentDate: payload.paymentDate ? new Date(payload.paymentDate) : new Date(),
+        verifiedByStaffId: isPendingVerification ? null : new Types.ObjectId(staff.id),
+        verifiedByName: isPendingVerification ? "" : staff.name.trim(),
+        notes: payload.paymentNotes?.trim() ?? "",
+        createdAt: new Date(),
+      },
+    ];
+  }
 
   const idempotencyKey = payload.idempotencyKey?.trim() || "";
 
   const orderBase = {
     channel: ORDER_CHANNEL.IN_STORE,
     status: ORDER_STATUS.COMPLETED,
-    paymentMethod: payload.paymentMethod,
-    paymentStatus: PAYMENT_STATUS.PAID,
-    customerId: null,
-    customerName: payload.customerName?.trim() ?? "",
-    customerEmail: payload.customerEmail?.trim().toLowerCase() ?? "",
-    customerPhone: "",
+    paymentMethod,
+    paymentStatus,
+    amountPaidInPaise,
+    changeInPaise,
+    customerId,
+    customerName,
+    customerEmail,
+    customerPhone,
     items: resolved.items,
     subtotalInPaise,
-    discountInPaise: 0,
-    taxInPaise: 0,
-    totalInPaise: subtotalInPaise,
+    discountInPaise,
+    taxInPaise,
+    totalInPaise,
     refundedTotalInPaise: 0,
     refunds: [],
-    // Omit the key entirely when absent: the sparse unique index allows only
-    // documents that actually carry the field, so anonymous sales never collide.
+    paymentEntries,
     ...(idempotencyKey ? { idempotencyKey } : {}),
     notes: "",
     placedByStaffId: new Types.ObjectId(staff.id),
@@ -556,8 +764,23 @@ export async function createInStoreOrder(
 
     try {
       const created = await session.withTransaction(async () => {
-        await decrementPhysicalStock(resolved.items, session);
+        // 1. Decrement physical stock and write StockMovement ledger entries
+        await decrementPhysicalStock(resolved.items, orderNumber, staff, session);
 
+        // 2. Track customer purchase & due history if customer account is linked
+        if (customerId) {
+          const cust = await Customer.findById(customerId).session(session);
+          if (cust) {
+            cust.totalPurchasesInPaise = (cust.totalPurchasesInPaise || 0) + totalInPaise;
+            const due = Math.max(0, totalInPaise - amountPaidInPaise);
+            if (due > 0) {
+              cust.outstandingDueInPaise = (cust.outstandingDueInPaise || 0) + due;
+            }
+            await cust.save({ session });
+          }
+        }
+
+        // 3. Create order snapshot
         const createdOrders = await Order.create([{ ...orderBase, orderNumber }], { session });
         return createdOrders[0];
       });
@@ -566,30 +789,40 @@ export async function createInStoreOrder(
       logger.info("In-store sale completed", {
         orderNumber: order.orderNumber,
         itemCount: order.items.length,
+        paymentMethod,
+        paymentStatus,
+        totalInPaise: order.totalInPaise,
+        amountPaidInPaise,
+        changeInPaise,
       });
+
       await recordAudit({
         actorStaffId: staff.id,
         action: AUDIT_ACTION.POS_SALE_COMPLETED,
         metadata: {
           orderNumber: order.orderNumber,
           itemCount: order.items.length,
+          subtotalInPaise: order.subtotalInPaise,
+          discountInPaise: order.discountInPaise,
+          taxInPaise: order.taxInPaise,
           totalInPaise: order.totalInPaise,
-          paymentMethod: order.paymentMethod,
+          paymentMethod,
+          paymentStatus,
+          amountPaidInPaise,
+          changeInPaise,
         },
       });
-      return toPosReceipt(order, staff.name, false);
+
+      return toPosReceipt(order, staff.name, false, changeInPaise);
     } catch (error) {
       if (isDuplicateKeyError(error)) {
-        // Either an order-number collision (retry) or a racing idempotent
-        // replay of an already committed sale. If the key now owns an order,
-        // return that sale instead of creating a second one.
         if (payload.idempotencyKey) {
           try {
             const replay = await Order.findOne({ idempotencyKey: payload.idempotencyKey })
               .lean<LeanOrder | null>();
-            if (replay) return toPosReceipt(replay, staff.name, true);
+            if (replay) return toPosReceipt(replay, staff.name, true, replay.changeInPaise ?? 0);
           } catch {
-            // fall through to a regular retry with a fresh order number
+            // fall through to a regular retry
           }
         }
         logger.warn("Order number collision - retrying with a new number", { orderNumber });

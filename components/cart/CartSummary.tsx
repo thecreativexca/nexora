@@ -1,17 +1,18 @@
 "use client";
 
 import { Price } from "@/components/ui/Price";
-import { PAYMENT_METHOD_LABELS, PAYMENT_METHOD } from "@/lib/constants/order";
 
 /** Order totals block. All amounts are integer paise, computed server-side. */
 export function CartSummary({
   subtotalInPaise,
   itemCount,
   blockingMessage,
+  paymentLabel = "Offline payment",
 }: {
   subtotalInPaise: number;
   itemCount: number;
   blockingMessage?: string | null;
+  paymentLabel?: string;
 }) {
   return (
     <dl className="space-y-2 text-sm">
@@ -30,7 +31,7 @@ export function CartSummary({
       <div className="flex items-center justify-between">
         <dt className="text-slate-600">Payment</dt>
         <dd className="font-medium text-slate-700">
-          {PAYMENT_METHOD_LABELS[PAYMENT_METHOD.PAYPAL]}
+          {paymentLabel}
         </dd>
       </div>
       <div className="flex items-center justify-between border-t border-slate-200 pt-3 text-base">

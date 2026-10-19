@@ -139,9 +139,6 @@ async function main(): Promise<void> {
   console.log(`  name:  ${staff.name}`);
   console.log(`  email: ${staff.email}`);
   console.log(`  role:  ${staff.role}`);
-  console.log(
-    "[create-super-admin] MFA is NOT yet enabled - enable it at your first portal sign-in (required for this role).",
-  );
 
   await disconnectDB();
 }

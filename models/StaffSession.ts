@@ -13,14 +13,6 @@ export interface StaffSessionDocument {
   staffId: Types.ObjectId;
   tokenHash: string;
   expiresAt: Date;
-  /**
-   * True only when the session was created after a valid MFA code (see
-   * /api/staff/mfa/verify). Cashier sessions - created straight after password
-   * login - carry false. `loadCurrentStaff` refuses to resolve a session for a
-   * role that requires MFA unless this flag is true, so a Cashier promoted to
-   * Manager cannot reuse their old unverified session to reach Manager APIs.
-   */
-  mfaVerified: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -34,7 +26,6 @@ const staffSessionSchema = new Schema<StaffSessionDocument>(
     },
     tokenHash: { type: String, required: true, unique: true },
     expiresAt: { type: Date, required: true },
-    mfaVerified: { type: Boolean, default: false },
   },
   { timestamps: true, versionKey: false },
 );

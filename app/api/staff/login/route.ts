@@ -13,10 +13,9 @@ import { staffLoginSchema } from "@/lib/validations/staff";
 /**
  * Staff sign-in.
  *
- * Responses:
- * - Cashier:     200 { step: "COMPLETE", redirectTo: "/pos" } + session cookie
- * - Manager/SA:  200 { step: "MFA_VERIFY" | "MFA_SETUP", redirectTo } + pending cookie
- * Failures are generic (no user enumeration) and both brute-force throttled.
+ * A correct email + password creates the staff session immediately
+ * (200 { step: "COMPLETE", redirectTo: "/pos" } + session cookie).
+ * Failures are generic (no user enumeration) and brute-force throttled.
  */
 export async function POST(request: NextRequest) {
   const parsedBody = await readJsonBody(request, "POST /api/staff/login invalid JSON");

@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: Request) {
   let staff: Awaited<ReturnType<typeof requirePermissionApi>>;
   try {
-    staff = await requirePermissionApi(STAFF_PERMISSION.ACCESS_INVENTORY);
+    staff = await requirePermissionApi(STAFF_PERMISSION.INVENTORY_CREATE);
   } catch (error) {
     return toErrorResponse(error, "POST /api/pos/inventory auth");
   }

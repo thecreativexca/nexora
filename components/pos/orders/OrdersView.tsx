@@ -22,6 +22,7 @@ import {
 import {
   STAFF_PERMISSION,
   staffHasPermission,
+  type StaffPermission,
   type StaffRole,
 } from "@/lib/constants/staff";
 import { cn } from "@/lib/utils/cn";
@@ -46,9 +47,19 @@ const CHANNEL_FILTERS: { value: ChannelFilter; label: string }[] = [
  * item list pattern. Rows open a full order detail dialog; status moves and
  * refunds are shown only when the role actually holds those permissions.
  */
-export function OrdersView({ role }: { role: StaffRole }) {
-  const canChangeStatus = staffHasPermission(role, STAFF_PERMISSION.MANAGE_ORDER_STATUS);
-  const canIssueRefund = staffHasPermission(role, STAFF_PERMISSION.ISSUE_REFUND);
+export function OrdersView({
+  role,
+  effectivePermissions,
+}: {
+  role: StaffRole;
+  effectivePermissions?: StaffPermission[];
+}) {
+  const canChangeStatus = effectivePermissions
+    ? effectivePermissions.includes(STAFF_PERMISSION.MANAGE_ORDER_STATUS)
+    : staffHasPermission(role, STAFF_PERMISSION.MANAGE_ORDER_STATUS);
+  const canIssueRefund = effectivePermissions
+    ? effectivePermissions.includes(STAFF_PERMISSION.ISSUE_REFUND)
+    : staffHasPermission(role, STAFF_PERMISSION.ISSUE_REFUND);
 
   const [channel, setChannel] = useState<ChannelFilter>("ALL");
   const [status, setStatus] = useState<OrderStatus | "">("");

@@ -23,7 +23,7 @@ export function HeroBanner({ categories }: { categories: CategorySummary[] }) {
           </h1>
           <p className="mt-4 max-w-xl text-sm text-slate-200 sm:text-base">
             Browse the live catalogue, build your bag and check out as a guest or member. Every
-            online order is completed through a secure prepaid PayPal checkout.
+            online order is completed through offline payment on delivery or in-store collection.
           </p>
 
           <ul className="mt-6 flex flex-col gap-2 text-sm text-slate-200">
@@ -36,12 +36,12 @@ export function HeroBanner({ categories }: { categories: CategorySummary[] }) {
           </ul>
 
           <div className="mt-7 flex flex-wrap gap-3">
-            <Link href="/products" className={buttonClasses("primary", "lg", "bg-white text-indigo-950 shadow-lg hover:bg-indigo-50")}>
+            <Link href="/products" className={buttonClasses("primary", "lg", "!bg-white !text-indigo-950 shadow-lg hover:!bg-indigo-50")}>
               Shop all products
             </Link>
             <Link
               href="/products?category=services"
-              className={buttonClasses("secondary", "lg", "border-white/30 bg-transparent text-white hover:bg-white/10")}
+              className={buttonClasses("secondary", "lg", "!border-white/30 !bg-transparent !text-white hover:!bg-white/10")}
             >
               Book a service
             </Link>

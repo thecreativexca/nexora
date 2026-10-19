@@ -1,9 +1,9 @@
 import type { NextRequest } from "next/server";
 
-import { requirePermissionApi } from "@/lib/auth/staff-session";
+import { requireStaffApi } from "@/lib/auth/staff-session";
 import { STAFF_PERMISSION } from "@/lib/constants/staff";
 import { refundStaffOrder } from "@/lib/services/staff-orders.service";
-import { validationError } from "@/lib/utils/errors";
+import { ForbiddenError, validationError } from "@/lib/utils/errors";
 import { readJsonBody, toErrorResponse, toSuccessResponse } from "@/lib/utils/http";
 import { refundRequestSchema } from "@/lib/validations/staff-order";
 
@@ -12,18 +12,19 @@ interface RouteContext {
 }
 
 /**
- * Issue a permanent FULL-ORDER refund (requires the ISSUE_REFUND permission -
- * MANAGER/SUPER_ADMIN only).
- *
- * The refund runs inside one MongoDB transaction: physical stock is restored,
- * the order is marked REFUNDED and a COMPLETED refund record is appended. Any
- * failure rolls everything back, and a second (even concurrent) refund is
- * rejected. CASHIER is denied here - not by hiding a button.
+ * Issue or request a refund (requires ISSUE_REFUND, PAYMENTS_REFUND_APPROVE, or PAYMENTS_REFUND_REQUEST).
  */
 export async function POST(request: NextRequest, { params }: RouteContext) {
-  let actor: Awaited<ReturnType<typeof requirePermissionApi>>;
+  let actor: Awaited<ReturnType<typeof requireStaffApi>>;
   try {
-    actor = await requirePermissionApi(STAFF_PERMISSION.ISSUE_REFUND);
+    actor = await requireStaffApi();
+    const canRefund =
+      actor.effectivePermissions.includes(STAFF_PERMISSION.ISSUE_REFUND) ||
+      actor.effectivePermissions.includes(STAFF_PERMISSION.PAYMENTS_REFUND_APPROVE) ||
+      actor.effectivePermissions.includes(STAFF_PERMISSION.PAYMENTS_REFUND_REQUEST);
+    if (!canRefund) {
+      throw new ForbiddenError("You are not authorized to issue or request refunds.");
+    }
   } catch (error) {
     return toErrorResponse(error, "POST /api/pos/orders/[orderNumber]/refund auth");
   }
@@ -45,7 +46,12 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
   }
 
   try {
-    const outcome = await refundStaffOrder(orderNumber, parsed.data.reason, actor);
+    const outcome = await refundStaffOrder(
+      orderNumber,
+      parsed.data.reason,
+      actor,
+      parsed.data.action,
+    );
     return toSuccessResponse({
       order: outcome.order,
       restoredItems: outcome.restoredItems,

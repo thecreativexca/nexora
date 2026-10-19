@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import { getJson, patchJson } from "@/components/pos/api";
 import { RefundDialog } from "@/components/pos/orders/RefundDialog";
+import { ReturnDialog } from "@/components/pos/orders/ReturnDialog";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { AlertIcon, CloseIcon, RefreshIcon } from "@/components/ui/icons";
@@ -45,6 +46,7 @@ export function OrderDetailDialog({
   const [busyStatus, setBusyStatus] = useState<OrderStatus | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [refundOpen, setRefundOpen] = useState(false);
+  const [returnOpen, setReturnOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
@@ -348,15 +350,20 @@ export function OrderDetailDialog({
               {canIssueRefund && order.refundable ? (
                 <div className="rounded-xl border border-slate-200 p-3">
                   <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Refund
+                    Returns & Refunds
                   </p>
                   <p className="mb-3 text-sm text-slate-600">
-                    Issue a full refund of {formatMoney(order.totalInPaise)}. Stock on
-                    physical items is restored automatically.
+                    Process an itemized customer return or issue a full order refund. Stock on
+                    sellable returned items is restored automatically.
                   </p>
-                  <Button variant="danger" size="sm" onClick={() => setRefundOpen(true)}>
-                    Issue refund
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="secondary" size="sm" onClick={() => setReturnOpen(true)}>
+                      Process return / exchange
+                    </Button>
+                    <Button variant="danger" size="sm" onClick={() => setRefundOpen(true)}>
+                      Full refund
+                    </Button>
+                  </div>
                 </div>
               ) : null}
             </div>
@@ -365,6 +372,17 @@ export function OrderDetailDialog({
           )}
         </div>
       </div>
+
+      {returnOpen && order ? (
+        <ReturnDialog
+          order={order}
+          onClose={() => setReturnOpen(false)}
+          onDone={() => {
+            setReloadKey((k) => k + 1);
+            onOrderChanged();
+          }}
+        />
+      ) : null}
 
       {refundOpen && order ? (
         <RefundDialog

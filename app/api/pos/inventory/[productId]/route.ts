@@ -6,7 +6,7 @@ import { validationError } from "@/lib/utils/errors";
 import { inventoryProductUpdateSchema } from "@/lib/validations/pos";
 
 /**
- * Update a single inventory product (manager/super-admin only).
+ * Update a single inventory product (manager/admin only).
  *
  * PATCH - targeted update: only supplied fields are written, so a stale form
  * can never overwrite the stock a cashier changed meanwhile.
@@ -17,7 +17,7 @@ export async function PATCH(
 ) {
   let staff: Awaited<ReturnType<typeof requirePermissionApi>>;
   try {
-    staff = await requirePermissionApi(STAFF_PERMISSION.ACCESS_INVENTORY);
+    staff = await requirePermissionApi(STAFF_PERMISSION.INVENTORY_UPDATE);
   } catch (error) {
     return toErrorResponse(error, "PATCH /api/pos/inventory auth");
   }
@@ -40,5 +40,30 @@ export async function PATCH(
     return toSuccessResponse({ product });
   } catch (error) {
     return toErrorResponse(error, "PATCH /api/pos/inventory failed");
+  }
+}
+
+/**
+ * Soft-archive / deactivate a product.
+ * Preserves all historical sales and receipts while removing from the active POS shelf.
+ */
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ productId: string }> },
+) {
+  let staff: Awaited<ReturnType<typeof requirePermissionApi>>;
+  try {
+    staff = await requirePermissionApi(STAFF_PERMISSION.INVENTORY_ARCHIVE);
+  } catch (error) {
+    return toErrorResponse(error, "DELETE /api/pos/inventory/[productId] auth");
+  }
+
+  const { productId } = await params;
+
+  try {
+    const product = await updateInventoryProduct(productId, { isActive: false }, staff);
+    return toSuccessResponse({ product });
+  } catch (error) {
+    return toErrorResponse(error, "DELETE /api/pos/inventory/[productId] failed");
   }
 }

@@ -8,16 +8,24 @@ import { CartSummary } from "@/components/cart/CartSummary";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ProductImage } from "@/components/common/ProductImage";
 import { buttonClasses } from "@/components/ui/Button";
-import { PayPalCheckoutButton } from "@/components/checkout/PayPalCheckoutButton";
 import { Price } from "@/components/ui/Price";
 import { Spinner } from "@/components/ui/Spinner";
 import { TextField } from "@/components/ui/TextField";
 import { AlertIcon } from "@/components/ui/icons";
 import { useCart } from "@/hooks/useCart";
 import { formatMoney } from "@/lib/utils/money";
+import {
+  PAYMENT_METHOD,
+  PAYMENT_METHOD_LABELS,
+  PAYMENT_METHOD_DESCRIPTIONS,
+  STOREFRONT_PAYMENT_METHODS,
+  type StorefrontPaymentMethod,
+} from "@/lib/constants/order";
 import { checkoutFieldSchemas, type CheckoutFieldName } from "@/lib/validations/common";
 import type { CartLineValidation, CartValidation } from "@/types/cart";
 import type { CustomerView } from "@/types/customer";
+import { placeOrderAction } from "@/app/(storefront)/checkout/actions";
+import { cn } from "@/lib/utils/cn";
 
 export interface CheckoutFormValues {
   customerName: string;
@@ -90,6 +98,14 @@ const FIELD_LABELS: Record<string, string> = {
   form: "Order",
 };
 
+/** Payment method icons for storefront */
+const PAYMENT_METHOD_ICONS: Record<StorefrontPaymentMethod, string> = {
+  CASH: "💵",
+  UPI: "📱",
+  CARD: "💳",
+  BANK_TRANSFER: "🏦",
+};
+
 function validateClientSide(values: CheckoutFormValues): Record<string, string> {
   const errors: Record<string, string> = {};
 
@@ -107,7 +123,7 @@ function validateClientSide(values: CheckoutFormValues): Record<string, string> 
   return errors;
 }
 
-export function CheckoutView({ customer, paypalClientId, currency }: { customer: CustomerView | null; paypalClientId: string; currency: string }) {
+export function CheckoutView({ customer }: { customer: CustomerView | null }) {
   const router = useRouter();
   const { lines, itemCount, hydrated, clearCart } = useCart();
   const [values, setValues] = useState<CheckoutFormValues>(() => buildInitialValues(customer));
@@ -116,6 +132,9 @@ export function CheckoutView({ customer, paypalClientId, currency }: { customer:
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [validation, setValidation] = useState<CartValidation | null>(null);
   const [isValidating, setIsValidating] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<StorefrontPaymentMethod>(
+    STOREFRONT_PAYMENT_METHODS[0],
+  );
   const linesRef = useRef(lines);
   const errorSummaryRef = useRef<HTMLDivElement>(null);
 
@@ -177,26 +196,68 @@ export function CheckoutView({ customer, paypalClientId, currency }: { customer:
     });
   };
 
-  const validateForPayment = () => {
-      if (isSubmitting) return false;
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (isSubmitting) return;
 
-      const clientErrors = validateClientSide(values);
-      if (Object.keys(clientErrors).length > 0) {
-        setFieldErrors(clientErrors);
-        setFormError("Please correct the highlighted fields before placing the order.");
+    const clientErrors = validateClientSide(values);
+    if (Object.keys(clientErrors).length > 0) {
+      setFieldErrors(clientErrors);
+      setFormError("Please correct the highlighted fields before placing the order.");
+      errorSummaryRef.current?.focus();
+      return;
+    }
+
+    setFieldErrors({});
+    setFormError(null);
+
+    if (unavailableLines.length > 0 || linesRef.current.length === 0) {
+      setFormError("Please remove unavailable items before placing the order.");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    const payload = {
+      customerName: values.customerName,
+      customerEmail: values.customerEmail,
+      customerPhone: values.customerPhone,
+      address: {
+        line1: values.addressLine1,
+        line2: values.addressLine2,
+        city: values.city,
+        state: values.state,
+        postalCode: values.postalCode,
+        country: values.country,
+      },
+      notes: values.notes,
+      paymentMethod,
+      items: linesRef.current.map((line) => ({ productId: line.productId, quantity: line.quantity })),
+    };
+
+    try {
+      const result = await placeOrderAction(payload);
+      if (result.ok) {
+        clearCart();
+        router.push(`/order/${result.orderNumber}`);
+      } else {
+        setIsSubmitting(false);
+        if (result.fieldErrors) {
+          const flatErrors: Record<string, string> = {};
+          for (const [key, messages] of Object.entries(result.fieldErrors)) {
+            flatErrors[key] = messages[0] ?? "Invalid value.";
+          }
+          setFieldErrors(flatErrors);
+        }
+        setFormError(result.message);
         errorSummaryRef.current?.focus();
-        return false;
       }
-
-      setFieldErrors({});
-      setFormError(null);
-      if (unavailableLines.length > 0 || linesRef.current.length === 0) { setFormError("Please remove unavailable items before paying."); return false; }
-      return true;
+    } catch {
+      setIsSubmitting(false);
+      setFormError("We could not place your order right now. Please try again.");
+      errorSummaryRef.current?.focus();
+    }
   };
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => event.preventDefault();
-  const checkoutPayload = { customerName: values.customerName, customerEmail: values.customerEmail, customerPhone: values.customerPhone,
-    address: { line1: values.addressLine1, line2: values.addressLine2, city: values.city, state: values.state, postalCode: values.postalCode, country: values.country },
-    notes: values.notes, items: lines.map((line) => ({ productId: line.productId, quantity: line.quantity })) };
 
   if (!hydrated) {
     return (
@@ -394,20 +455,74 @@ export function CheckoutView({ customer, paypalClientId, currency }: { customer:
           ) : null}
         </fieldset>
 
-        <div className="rounded-xl border border-indigo-100 bg-indigo-50/70 p-4 text-sm text-indigo-900">
-          <p className="font-semibold text-slate-900">
-            Payment: PayPal
+        {/* Offline payment method selection */}
+        <fieldset>
+          <legend className="mb-2 text-sm font-semibold text-slate-900">
+            How would you like to pay?
+          </legend>
+          <p className="mb-3 text-xs text-slate-500">
+            Pay at store, on delivery, or via transfer — no online payment is taken now.
           </p>
-          <p className="mt-1">
-            Your amount is calculated on the server. PayPal securely handles approval and payment details.
+          <div className="grid grid-cols-2 gap-3">
+            {STOREFRONT_PAYMENT_METHODS.map((method) => (
+              <label
+                key={method}
+                title={PAYMENT_METHOD_DESCRIPTIONS[method]}
+                className={cn(
+                  "flex cursor-pointer items-center gap-2 rounded-xl border p-3 text-sm font-medium transition-colors",
+                  paymentMethod === method
+                    ? "border-indigo-600 bg-indigo-50 text-indigo-900 ring-1 ring-indigo-600"
+                    : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50",
+                )}
+              >
+                <input
+                  type="radio"
+                  name="storefront-payment-method"
+                  value={method}
+                  checked={paymentMethod === method}
+                  onChange={() => setPaymentMethod(method)}
+                  disabled={isSubmitting}
+                  className="sr-only"
+                />
+                <span aria-hidden className="text-base">
+                  {PAYMENT_METHOD_ICONS[method]}
+                </span>
+                <span>{PAYMENT_METHOD_LABELS[method]}</span>
+              </label>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-slate-500">
+            {PAYMENT_METHOD_DESCRIPTIONS[paymentMethod]}
+          </p>
+        </fieldset>
+
+        {/* Payment summary info */}
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+          <p className="font-semibold text-slate-900">
+            Payment: {PAYMENT_METHOD_LABELS[paymentMethod]}
+          </p>
+          <p className="mt-1 text-slate-600">
+            Your order will be placed as <span className="font-medium text-amber-700">unpaid</span>.
+            Our team will confirm payment with you after you receive or collect your order.
+            No online payment is taken at checkout.
           </p>
         </div>
 
         <div className="flex flex-col gap-2">
-          <p className="text-center text-sm font-semibold text-slate-900">Pay {formatMoney(subtotalInPaise)}</p>
-          <PayPalCheckoutButton clientId={paypalClientId} currency={currency} payload={checkoutPayload} disabled={isSubmitting || unavailableLines.length > 0}
-            validate={validateForPayment} onSuccess={(orderNumber) => { setIsSubmitting(true); clearCart(); router.push(`/order/${orderNumber}`); }}
-            onError={(message) => { setIsSubmitting(false); setFormError(message); errorSummaryRef.current?.focus(); }} />
+          <button
+            type="submit"
+            disabled={isSubmitting || unavailableLines.length > 0 || lines.length === 0}
+            className={buttonClasses("primary", "md")}
+          >
+            {isSubmitting ? (
+              <span className="flex items-center justify-center gap-2">
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                Placing order…
+              </span>
+            ) : (
+              `Place order · ${formatMoney(subtotalInPaise)}`
+            )}
+          </button>
           <Link href="/products" className={buttonClasses("secondary", "md")}>
             Continue shopping
           </Link>
@@ -466,5 +581,3 @@ export function CheckoutView({ customer, paypalClientId, currency }: { customer:
     </div>
   );
 }
-
-

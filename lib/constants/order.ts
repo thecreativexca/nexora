@@ -109,81 +109,154 @@ export const ORDER_STATUS_TONES: Record<OrderStatus, StatusTone> = {
   REFUNDED: "neutral",
 };
 
-/** Central payment methods. Online checkout is prepaid through PayPal only. */
+/**
+ * All payment methods in the system.
+ *
+ * PAYPAL and ONLINE_GATEWAY are kept as legacy constants for historical order
+ * records only - they must never appear in any active payment selection UI or
+ * new order creation after Phase 1 migration.
+ */
 export const PAYMENT_METHOD = {
   CASH: "CASH",
   CARD: "CARD",
   MOBILE: "MOBILE",
   UPI: "UPI",
-  ONLINE_GATEWAY: "ONLINE_GATEWAY",
+  BANK_TRANSFER: "BANK_TRANSFER",
+  CHEQUE: "CHEQUE",
+  SPLIT: "SPLIT",
+  /** @deprecated Legacy - historical PayPal orders only. Do not use for new orders. */
   PAYPAL: "PAYPAL",
+  /** @deprecated Legacy - historical gateway orders only. Do not use for new orders. */
+  ONLINE_GATEWAY: "ONLINE_GATEWAY",
 } as const;
 export type PaymentMethod = (typeof PAYMENT_METHOD)[keyof typeof PAYMENT_METHOD];
+
+/**
+ * All valid payment method values stored in DB (includes legacy for backward
+ * compatibility with historical records).
+ */
 export const PAYMENT_METHOD_VALUES = [
   PAYMENT_METHOD.CASH,
   PAYMENT_METHOD.CARD,
   PAYMENT_METHOD.MOBILE,
   PAYMENT_METHOD.UPI,
+  PAYMENT_METHOD.BANK_TRANSFER,
+  PAYMENT_METHOD.CHEQUE,
+  PAYMENT_METHOD.SPLIT,
+  PAYMENT_METHOD.PAYPAL,
   PAYMENT_METHOD.ONLINE_GATEWAY,
-  PAYMENT_METHOD.PAYPAL,
-] as const;
-export const ONLINE_CHECKOUT_PAYMENT_METHODS = [
-  PAYMENT_METHOD.PAYPAL,
 ] as const;
 
 /**
- * Payment methods selectable on the in-store register. The POS treats a
- * completed sale as paid (paymentStatus = PAID); no external gateway is
- * contacted in this phase.
+ * Payment methods selectable at the in-store POS register.
+ * All are offline/manual - no external gateway is ever contacted.
  */
 export const POS_PAYMENT_METHODS = [
   PAYMENT_METHOD.CASH,
   PAYMENT_METHOD.CARD,
+  PAYMENT_METHOD.UPI,
+  PAYMENT_METHOD.BANK_TRANSFER,
+  PAYMENT_METHOD.CHEQUE,
   PAYMENT_METHOD.MOBILE,
 ] as const;
+export type PosPaymentMethod = (typeof POS_PAYMENT_METHODS)[number];
+
+/** Register-level choices include SPLIT, whose individual entries remain offline methods. */
+export const POS_SALE_PAYMENT_METHODS = [
+  ...POS_PAYMENT_METHODS,
+  PAYMENT_METHOD.SPLIT,
+] as const;
+
+/**
+ * Payment methods available for storefront (online) orders.
+ * Customers declare how they intend to pay offline when collecting/receiving.
+ */
+export const STOREFRONT_PAYMENT_METHODS = [
+  PAYMENT_METHOD.CASH,
+  PAYMENT_METHOD.UPI,
+  PAYMENT_METHOD.CARD,
+  PAYMENT_METHOD.BANK_TRANSFER,
+] as const;
+export type StorefrontPaymentMethod = (typeof STOREFRONT_PAYMENT_METHODS)[number];
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   CASH: "Cash",
-  CARD: "Card",
-  MOBILE: "Mobile",
+  CARD: "Card (POS Terminal)",
+  MOBILE: "Mobile Pay",
   UPI: "UPI",
-  ONLINE_GATEWAY: "Online payment",
-  PAYPAL: "PayPal",
+  BANK_TRANSFER: "Bank Transfer",
+  CHEQUE: "Cheque",
+  SPLIT: "Split Payment",
+  ONLINE_GATEWAY: "Online payment (legacy)",
+  PAYPAL: "PayPal (legacy)",
 };
 
+export const PAYMENT_METHOD_DESCRIPTIONS: Record<PaymentMethod, string> = {
+  CASH: "Pay with physical currency. Change will be calculated.",
+  CARD: "Swipe or tap on our card terminal (manual recording).",
+  MOBILE: "Mobile wallet payment.",
+  UPI: "UPI transfer — provide transaction reference ID.",
+  BANK_TRANSFER: "NEFT / IMPS / RTGS — provide transfer reference.",
+  CHEQUE: "Pay by cheque — subject to clearance verification.",
+  SPLIT: "Pay using a combination of methods.",
+  ONLINE_GATEWAY: "Legacy online payment.",
+  PAYPAL: "Legacy PayPal payment.",
+};
+
+/** Payment statuses covering the full offline payment lifecycle. */
 export const PAYMENT_STATUS = {
-  PENDING: "PENDING",
+  /** No payment has been recorded yet (default for new orders). */
+  UNPAID: "UNPAID",
+  /** Payment has been partially received; balance still outstanding. */
+  PARTIALLY_PAID: "PARTIALLY_PAID",
+  /** Full payment confirmed and recorded. */
   PAID: "PAID",
+  /** Payment received but awaiting manual verification (cheque/bank transfer). */
+  PENDING_VERIFICATION: "PENDING_VERIFICATION",
+  /** Legacy: was PENDING in the old PayPal gateway flow. */
+  PENDING: "PENDING",
+  /** Payment failed (legacy gateway flow only). */
   FAILED: "FAILED",
+  /** Full refund has been processed. */
   REFUNDED: "REFUNDED",
+  /** Partial refund has been processed. */
   PARTIALLY_REFUNDED: "PARTIALLY_REFUNDED",
 } as const;
 export type PaymentStatus = (typeof PAYMENT_STATUS)[keyof typeof PAYMENT_STATUS];
 export const PAYMENT_STATUS_VALUES = [
-  PAYMENT_STATUS.PENDING,
+  PAYMENT_STATUS.UNPAID,
+  PAYMENT_STATUS.PARTIALLY_PAID,
   PAYMENT_STATUS.PAID,
+  PAYMENT_STATUS.PENDING_VERIFICATION,
+  PAYMENT_STATUS.PENDING,
   PAYMENT_STATUS.FAILED,
   PAYMENT_STATUS.REFUNDED,
   PAYMENT_STATUS.PARTIALLY_REFUNDED,
 ] as const;
 
 export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
-  PENDING: "Pending",
+  UNPAID: "Unpaid",
+  PARTIALLY_PAID: "Partially paid",
   PAID: "Paid",
+  PENDING_VERIFICATION: "Pending verification",
+  PENDING: "Pending",
   FAILED: "Failed",
   REFUNDED: "Refunded",
   PARTIALLY_REFUNDED: "Partially refunded",
 };
 
 export const PAYMENT_STATUS_TONES: Record<PaymentStatus, StatusTone> = {
-  PENDING: "warning",
+  UNPAID: "danger",
+  PARTIALLY_PAID: "warning",
   PAID: "success",
+  PENDING_VERIFICATION: "warning",
+  PENDING: "warning",
   FAILED: "danger",
   REFUNDED: "neutral",
   PARTIALLY_REFUNDED: "neutral",
 };
 
-/** Refund foundation - the refund workflow itself ships in a later phase. */
+/** Refund status lifecycle. */
 export const REFUND_STATUS = {
   REQUESTED: "REQUESTED",
   APPROVED: "APPROVED",
@@ -215,8 +288,7 @@ export const ORDER_NUMBER_MAX_ATTEMPTS = 5;
  *
  * Staff may only step along these arrows; anything else is rejected server-side.
  * DELIVERED and COMPLETED are terminal, and CANCELLED / REFUNDED are handled by
- * their own exceptional flows (Phase 5 only ships the refund flow - cancellation
- * has no stock-restoring implementation and must not be added lightly).
+ * their own exceptional flows.
  *
  * In-store (IN_STORE) sales never use this map: they are created COMPLETED at
  * the register and have no delivery progression.
@@ -255,3 +327,47 @@ export const REFUND_REASON_OPTIONS = [
 
 export const REFUND_REASON_MIN_LENGTH = 2;
 export const REFUND_REASON_MAX_LENGTH = 500;
+
+/* ---------------------------------------------------------------------------
+ * Offline payment helpers
+ * ------------------------------------------------------------------------- */
+
+/** Methods that require a reference number / transaction ID for verification. */
+export const REFERENCE_REQUIRED_METHODS: readonly PaymentMethod[] = [
+  PAYMENT_METHOD.UPI,
+  PAYMENT_METHOD.BANK_TRANSFER,
+  PAYMENT_METHOD.CHEQUE,
+];
+
+/** Returns true if this payment method requires a manual reference/transaction ID. */
+export function methodRequiresReference(method: PaymentMethod): boolean {
+  return REFERENCE_REQUIRED_METHODS.includes(method);
+}
+
+/** Methods that start with PENDING_VERIFICATION status until confirmed by staff. */
+export const PENDING_VERIFICATION_METHODS: readonly PaymentMethod[] = [
+  PAYMENT_METHOD.BANK_TRANSFER,
+  PAYMENT_METHOD.CHEQUE,
+];
+
+/** Returns true if this method should start in pending-verification state. */
+export function methodIsPendingVerification(method: PaymentMethod): boolean {
+  return PENDING_VERIFICATION_METHODS.includes(method);
+}
+
+/**
+ * Compute the correct payment status for an order from amounts.
+ * Uses integer paise arithmetic to avoid floating-point drift.
+ */
+export function computePaymentStatus(
+  totalInPaise: number,
+  amountPaidInPaise: number,
+  refundedTotalInPaise: number,
+): PaymentStatus {
+  const netPaid = amountPaidInPaise - refundedTotalInPaise;
+  if (refundedTotalInPaise >= totalInPaise) return PAYMENT_STATUS.REFUNDED;
+  if (refundedTotalInPaise > 0) return PAYMENT_STATUS.PARTIALLY_REFUNDED;
+  if (netPaid <= 0) return PAYMENT_STATUS.UNPAID;
+  if (netPaid >= totalInPaise) return PAYMENT_STATUS.PAID;
+  return PAYMENT_STATUS.PARTIALLY_PAID;
+}

@@ -5,7 +5,8 @@ import {
   MIN_PASSWORD_LENGTH,
 } from "@/lib/constants/customer";
 import {
-  INVITEABLE_STAFF_ROLES,
+  ADDABLE_STAFF_ROLES,
+  ALL_STAFF_PERMISSIONS,
   STAFF_ROLE,
 } from "@/lib/constants/staff";
 import {
@@ -18,7 +19,7 @@ import {
  * Staff portal contracts (Phase 3). Shared by the client forms (instant
  * feedback) and the mandatory server-side validation in the route handlers.
  * Roles submitted from the browser are never trusted wholesale - the role in
- * an invite only exists to be cross-checked against the actor's own role.
+ * a creation request only exists to be cross-checked against the actor's role.
  */
 
 /** Min 8 chars, max 72 (bcrypt input limit). Server enforced. */
@@ -38,68 +39,64 @@ export const staffLoginSchema = z.object({
 });
 export type StaffLoginInput = z.input<typeof staffLoginSchema>;
 
-const invitationCodeSchema = z
-  .string()
-  .trim()
-  .min(8, "Enter the full invitation code.")
-  .max(32, "That invitation code looks too long.");
-
-/** Only MANAGER and CASHIER can ever be invited (never SUPER_ADMIN). */
-export const staffInvitationSchema = z.object({
-  email: emailSchema,
-  role: z.enum(INVITEABLE_STAFF_ROLES, "Choose a valid staff role."),
-});
-export type StaffInvitationInput = z.input<typeof staffInvitationSchema>;
-
-export const invitationCheckSchema = z.object({
-  code: invitationCodeSchema,
-  email: emailSchema,
-});
-export type InvitationCheckInput = z.input<typeof invitationCheckSchema>;
-
-export const invitationAcceptSchema = z
+/**
+ * Direct team-member creation. An admin sets the initial password and shares
+ * it with the new joiner - there is no invitation code.
+ */
+export const staffCreateMemberSchema = z
   .object({
-    code: invitationCodeSchema,
-    email: emailSchema,
     name: staffNameSchema,
+    email: emailSchema,
     password: staffPasswordSchema,
-    confirmPassword: z.string().min(1, "Confirm your password."),
+    confirmPassword: z.string().min(1, "Confirm the password."),
+    role: z.enum(ADDABLE_STAFF_ROLES, "Choose a valid staff role."),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords do not match.",
     path: ["confirmPassword"],
   });
-export type InvitationAcceptInput = z.input<typeof invitationAcceptSchema>;
-
-export const mfaVerifySchema = z.object({
-  code: z
-    .string()
-    .trim()
-    .regex(/^\d{6}$/, "Enter the 6-digit code from your authenticator app."),
-});
-export type MfaVerifyInput = z.input<typeof mfaVerifySchema>;
+export type StaffCreateMemberInput = z.input<typeof staffCreateMemberSchema>;
 
 /**
- * Team management action. At least one of `isActive` / `role` must be present.
- * The `role` here is the *new target role* (MANAGER or CASHIER only).
+ * Team management action. At least one of `isActive` / `role` / `permissions` must be present.
+ * The `role` here is the *new target role* (MANAGER, SELLER or CASHIER).
  */
 export const staffTeamActionSchema = z
   .object({
     staffId: objectIdSchema,
     isActive: z.boolean().optional(),
-    role: z.enum([STAFF_ROLE.MANAGER, STAFF_ROLE.CASHIER]).optional(),
+    role: z.enum([STAFF_ROLE.MANAGER, STAFF_ROLE.SELLER, STAFF_ROLE.CASHIER]).optional(),
+    permissionGrants: z.array(z.string()).optional(),
+    permissionDenies: z.array(z.string()).optional(),
   })
-  .refine((data) => data.isActive !== undefined || data.role !== undefined, {
-    message: "Provide an action (activate/deactivate or role change).",
-  });
+  .refine(
+    (data) =>
+      data.isActive !== undefined ||
+      data.role !== undefined ||
+      data.permissionGrants !== undefined ||
+      data.permissionDenies !== undefined,
+    {
+      message: "Provide an action (activate/deactivate, role change, or permissions update).",
+    },
+  );
 export type StaffTeamActionInput = z.input<typeof staffTeamActionSchema>;
+
+const staffPermissionSchema = z.string().refine(
+  (value): value is (typeof ALL_STAFF_PERMISSIONS)[number] =>
+    (ALL_STAFF_PERMISSIONS as readonly string[]).includes(value),
+  "Choose a valid staff permission.",
+);
+
+export const staffPermissionsUpdateSchema = z.object({
+  permissionGrants: z.array(staffPermissionSchema).max(ALL_STAFF_PERMISSIONS.length).default([]),
+  permissionDenies: z.array(staffPermissionSchema).max(ALL_STAFF_PERMISSIONS.length).default([]),
+});
+export type StaffPermissionsUpdateInput = z.input<typeof staffPermissionsUpdateSchema>;
 
 export const staffFieldSchemas = {
   email: emailSchema,
   name: staffNameSchema,
   password: staffPasswordSchema,
-  invitationCode: invitationCodeSchema,
-  mfaCode: mfaVerifySchema.shape.code,
 } as const;
 
 export type StaffFieldName = keyof typeof staffFieldSchemas;

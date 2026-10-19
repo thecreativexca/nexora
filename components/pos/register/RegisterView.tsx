@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { PaginationControl } from "@/components/pos/Pagination";
-import { CartPanel } from "@/components/pos/register/CartPanel";
+import { CartPanel, type CustomerOption } from "@/components/pos/register/CartPanel";
 import { ProductTile } from "@/components/pos/register/ProductTile";
 import { ReceiptPanel } from "@/components/pos/register/ReceiptPanel";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -21,6 +21,7 @@ import type {
   PosProduct,
   PosProductListResult,
   PosReceipt,
+  PosSplitPaymentInput,
 } from "@/types/pos";
 
 export function RegisterView({ staffName }: { staffName: string }) {
@@ -40,12 +41,21 @@ export function RegisterView({ staffName }: { staffName: string }) {
   const [cartOpen, setCartOpen] = useState(false);
   const [customerName, setCustomerName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerOption | null>(null);
+
+  const [discountInPaise, setDiscountInPaise] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PAYMENT_METHOD.CASH);
+  const [splitPayments, setSplitPayments] = useState<PosSplitPaymentInput[]>([]);
+  const [cashReceivedInPaise, setCashReceivedInPaise] = useState(0);
+  const [referenceNumber, setReferenceNumber] = useState("");
+  const [paymentNotes, setPaymentNotes] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<PosReceipt | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [barcodeNotification, setBarcodeNotification] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -86,8 +96,12 @@ export function RegisterView({ staffName }: { staffName: string }) {
         productId: product.id,
         name: product.name,
         sku: product.sku,
+        barcode: product.barcode,
         image: product.image,
         unitPriceInPaise: product.priceInPaise,
+        mrpInPaise: product.mrpInPaise,
+        taxRate: product.taxRate ?? 0,
+        unit: product.unit || "Piece",
         isService: product.isService,
         maxQuantity: product.maxOrderable,
         quantity: 1,
@@ -138,13 +152,43 @@ export function RegisterView({ staffName }: { staffName: string }) {
 
   const clearCart = useCallback(() => setCart([]), []);
 
-  const { itemCount, subtotalInPaise } = useMemo(
-    () => ({
-      itemCount: cart.reduce((total, line) => total + line.quantity, 0),
-      subtotalInPaise: sumMoney(cart.map((line) => multiplyMoney(line.unitPriceInPaise, line.quantity))),
-    }),
-    [cart],
-  );
+  const { itemCount, subtotalInPaise, taxInPaise, totalInPaise } = useMemo(() => {
+    const count = cart.reduce((total, line) => total + line.quantity, 0);
+    const subtotal = sumMoney(cart.map((line) => multiplyMoney(line.unitPriceInPaise, line.quantity)));
+    const tax = cart.reduce(
+      (sum, line) =>
+        sum + Math.round((multiplyMoney(line.unitPriceInPaise, line.quantity) * (line.taxRate ?? 0)) / 100),
+      0,
+    );
+    const total = Math.max(0, subtotal + tax - discountInPaise);
+
+    return {
+      itemCount: count,
+      subtotalInPaise: subtotal,
+      taxInPaise: tax,
+      totalInPaise: total,
+    };
+  }, [cart, discountInPaise]);
+
+  // Barcode scanner integration (detects Enter key from hardware barcode scanners)
+  const handleSearchKeyDown = async (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter" && search.trim()) {
+      event.preventDefault();
+      const code = search.trim();
+      try {
+        const res = await getJson<PosProduct>(`/api/pos/products/barcode/${encodeURIComponent(code)}`);
+        if (res.ok && res.data) {
+          addToCart(res.data);
+          setSearch("");
+          searchReset();
+          setBarcodeNotification(`Added ${res.data.name} via barcode scan`);
+          setTimeout(() => setBarcodeNotification(null), 3000);
+        }
+      } catch {
+        // Fall back to normal search
+      }
+    }
+  };
 
   const charge = useCallback(async () => {
     if (cart.length === 0 || submitting) return;
@@ -154,9 +198,16 @@ export function RegisterView({ staffName }: { staffName: string }) {
     const idempotencyKey = crypto.randomUUID();
     const result = await postJson<{ receipt: PosReceipt }>("/api/pos/sales", {
       items: cart.map((line) => ({ productId: line.productId, quantity: line.quantity })),
+      customerId: selectedCustomer?.id || undefined,
       customerName: customerName.trim() || undefined,
       customerEmail: customerEmail.trim() || undefined,
+      customerPhone: customerPhone.trim() || undefined,
+      discountInPaise: discountInPaise > 0 ? discountInPaise : undefined,
       paymentMethod,
+      splitPayments: paymentMethod === PAYMENT_METHOD.SPLIT ? splitPayments : undefined,
+      cashReceivedInPaise: paymentMethod === PAYMENT_METHOD.CASH ? cashReceivedInPaise : undefined,
+      referenceNumber: referenceNumber.trim() || undefined,
+      paymentNotes: paymentNotes.trim() || undefined,
       idempotencyKey,
     });
 
@@ -167,7 +218,20 @@ export function RegisterView({ staffName }: { staffName: string }) {
     } else {
       setSubmitError(result.message);
     }
-  }, [cart, customerName, customerEmail, paymentMethod, submitting]);
+  }, [
+    cart,
+    selectedCustomer,
+    customerName,
+    customerEmail,
+    customerPhone,
+    discountInPaise,
+    paymentMethod,
+    splitPayments,
+    cashReceivedInPaise,
+    referenceNumber,
+    paymentNotes,
+    submitting,
+  ]);
 
   const newSale = useCallback(() => {
     setReceipt(null);
@@ -175,12 +239,29 @@ export function RegisterView({ staffName }: { staffName: string }) {
     setSubmitError(null);
     setCustomerName("");
     setCustomerEmail("");
+    setCustomerPhone("");
+    setSelectedCustomer(null);
+    setDiscountInPaise(0);
     setPaymentMethod(PAYMENT_METHOD.CASH);
+    setSplitPayments([]);
+    setCashReceivedInPaise(0);
+    setReferenceNumber("");
+    setPaymentNotes("");
     setCartOpen(false);
   }, []);
 
+  const handlePaymentMethodChange = useCallback((method: PaymentMethod) => {
+    setPaymentMethod(method);
+    setCashReceivedInPaise(0);
+    setReferenceNumber("");
+    setPaymentNotes("");
+    if (method !== PAYMENT_METHOD.SPLIT) {
+      setSplitPayments([]);
+    }
+  }, []);
+
   const chargeButtonLabel =
-    cart.length === 0 ? "Charge total" : `Charge ${formatMoney(subtotalInPaise)}`;
+    cart.length === 0 ? "Charge total" : `Charge ${formatMoney(totalInPaise)}`;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 lg:px-8">
@@ -203,18 +284,26 @@ export function RegisterView({ staffName }: { staffName: string }) {
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_400px]">
         <main>
           <div className="flex flex-col gap-3">
-            <input
-              type="search"
-              autoFocus
-              aria-label="Search products"
-              placeholder="Search products by name or SKU…"
-              value={search}
-              onChange={(event) => {
-                setSearch(event.target.value);
-                searchReset();
-              }}
-              className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:ring-0"
-            />
+            <div className="relative">
+              <input
+                type="search"
+                autoFocus
+                aria-label="Search products or scan barcode"
+                placeholder="Search products by name, SKU, or scan barcode…"
+                value={search}
+                onKeyDown={handleSearchKeyDown}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  searchReset();
+                }}
+                className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:ring-0"
+              />
+              {barcodeNotification ? (
+                <div className="absolute right-3 top-2.5 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">
+                  {barcodeNotification}
+                </div>
+              ) : null}
+            </div>
 
             {categories.length > 0 ? (
               <div className="flex flex-wrap gap-2" role="list" aria-label="Filter by category">
@@ -285,20 +374,22 @@ export function RegisterView({ staffName }: { staffName: string }) {
           ) : products.length === 0 ? (
             <div className="mt-6">
               <EmptyState
-                title="No products match"
-                description="Try a different search term or category."
+                title="No products found"
+                description={
+                  search || categoryId
+                    ? "Try clearing the search or choosing a different category."
+                    : "Add your first product in Inventory to start billing."
+                }
               />
             </div>
           ) : (
             <>
-              <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+              <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
                 {products.map((product) => (
                   <ProductTile
                     key={product.id}
                     product={product}
-                    inCartQuantity={
-                      cart.find((line) => line.productId === product.id)?.quantity ?? 0
-                    }
+                    inCartQuantity={cart.find((line) => line.productId === product.id)?.quantity ?? 0}
                     onAdd={addToCart}
                   />
                 ))}
@@ -334,15 +425,38 @@ export function RegisterView({ staffName }: { staffName: string }) {
             lines={cart}
             itemCount={itemCount}
             subtotalInPaise={subtotalInPaise}
+            taxInPaise={taxInPaise}
+            discountInPaise={discountInPaise}
+            totalInPaise={totalInPaise}
             customerName={customerName}
             customerEmail={customerEmail}
+            customerPhone={customerPhone}
+            selectedCustomer={selectedCustomer}
             paymentMethod={paymentMethod}
+            splitPayments={splitPayments}
+            cashReceivedInPaise={cashReceivedInPaise}
+            referenceNumber={referenceNumber}
+            paymentNotes={paymentNotes}
             submitting={submitting}
             errorMessage={submitError}
             chargeLabel={chargeButtonLabel}
             onCustomerNameChange={setCustomerName}
             onCustomerEmailChange={setCustomerEmail}
-            onPaymentMethodChange={setPaymentMethod}
+            onCustomerPhoneChange={setCustomerPhone}
+            onSelectCustomer={(c) => {
+              setSelectedCustomer(c);
+              if (c) {
+                setCustomerName(c.name);
+                setCustomerEmail(c.email);
+                setCustomerPhone(c.phone);
+              }
+            }}
+            onDiscountChange={setDiscountInPaise}
+            onPaymentMethodChange={handlePaymentMethodChange}
+            onSplitPaymentsChange={setSplitPayments}
+            onCashReceivedChange={setCashReceivedInPaise}
+            onReferenceNumberChange={setReferenceNumber}
+            onPaymentNotesChange={setPaymentNotes}
             onIncrease={increase}
             onDecrease={decrease}
             onSetQuantity={(productId, quantity) => {
@@ -365,7 +479,7 @@ export function RegisterView({ staffName }: { staffName: string }) {
           disabled={cart.length === 0}
         >
           View cart · {itemCount} {itemCount === 1 ? "item" : "items"} ·{" "}
-          {formatMoney(subtotalInPaise)}
+          {formatMoney(totalInPaise)}
         </Button>
       </div>
     </div>

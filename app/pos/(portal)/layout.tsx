@@ -10,13 +10,13 @@ import { Logo } from "@/components/common/Logo";
 
 /**
  * Signed-in portal shell. `requireStaff` re-validates the session on every
- * request: a session that did not satisfy MFA for an MFA-required role resolves
- * to NULL and the member is sent to /pos/login to re-authenticate (with MFA).
+ * request: an expired/revoked session resolves to NULL and the member is sent
+ * to /pos/login to sign in again.
  */
 export default async function PosPortalLayout({ children }: { children: ReactNode }) {
   const staff = await requireStaff();
 
-  const navItems = getNavItems(staff.role);
+  const navItems = getNavItems(staff);
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50/70">

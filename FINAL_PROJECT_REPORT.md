@@ -11,7 +11,7 @@
 Nexora is a full-stack order platform split into two domains:
 
 - **Storefront** (public): product catalogue, cart, checkout, order tracking, customer accounts (login/register/profile/orders).
-- **Staff POS portal** (`/pos`): login + mandatory MFA, register (in-store sales), order management (list/detail/status/refund), reports, team access management.
+- **Staff POS portal** (`/pos`): login, register (in-store sales), order management (list/detail/status/refund), reports, team access management.
 
 All money is integer paise. The server re-reads catalogue prices and stock at every write; the browser is never trusted for totals. Order creation is transactional and idempotent.
 
@@ -19,8 +19,8 @@ All money is integer paise. The server re-reads catalogue prices and stock at ev
 
 - **Next.js 16.3.5** (App Router, Turbopack), **React 19.2.8**, **TypeScript 5**, **Tailwind CSS 4**.
 - **MongoDB via Mongoose 9.10.1** — single data store for both domains (no SQL/Supabase/Firebase).
-- **Zod 4** for runtime validation, **bcryptjs** for password hashing, **otpauth + qrcode** for TOTP MFA, Playwright-core (test scaffolding), `tsx` for the test runners.
-- Dev/test DB: local single-node replica set (`nexora-rs`, port `27018`, database `nexora_dev`) — required because order creation/refunds/invitation acceptance use MongoDB transactions.
+- **Zod 4** for runtime validation, **bcryptjs** for password hashing, Playwright-core (test scaffolding), `tsx` for the test runners.
+- Dev/test DB: local single-node replica set (`nexora-rs`, port `27018`, database `nexora_dev`) — required because order creation/refunds use MongoDB transactions.
 
 ## 3. Repository layout
 
@@ -71,7 +71,7 @@ All money is integer paise. The server re-reads catalogue prices and stock at ev
 | `/pos/inventory` | Catalogue/products management |
 | `/pos/orders` | Order list + detail dialog |
 | `/pos/reports` | Sales reporting |
-| `/pos/team` | Staff & invitation management |
+| `/pos/team` | Staff & team management |
 
 Portal pages are guarded by `requireStaff`; page-level permission checks gate restricted modules (e.g. cashiers cannot open `/pos/team`). Pages are excluded from search indexing.
 
@@ -80,9 +80,6 @@ Portal pages are guarded by `requireStaff`; page-level permission checks gate re
 | Route | Purpose |
 |---|---|
 | `/pos/login` | Staff sign-in |
-| `/pos/join` | Invitation acceptance + first-time MFA setup / password set |
-| `/pos/mfa-setup` | First-time TOTP enrolment (kept behind the pending-MFA pre-auth cookie) |
-| `/pos/mfa-verify` | TOTP code entry |
 
 ## 9. Customer/storefront API routes
 
@@ -119,16 +116,11 @@ Portal pages are guarded by `requireStaff`; page-level permission checks gate re
 
 | Route | Method | Purpose / guard |
 |---|---|---|
-| `/api/staff/login` | POST | Password login → creates pending-MFA pre-auth cookie for MFA-required roles, or a full session for cashiers |
-| `/api/staff/mfa/setup` | POST | First-time MFA enrolment (requires pending cookie; refuses cashiers) |
-| `/api/staff/mfa/verify` | POST | TOTP verification → real staff session minted |
+| `/api/staff/login` | POST | Password login → staff session issued immediately |
 | `/api/staff/logout` | POST | Server-side session revocation |
 | `/api/staff/me` | GET | Signed-in staff profile |
-| `/api/staff/team` | GET/POST | Team list (staff + invitations) / invite staff |
+| `/api/staff/team` | GET/POST | Team list / add a team member with an initial password |
 | `/api/staff/team/[staffId]` | PATCH | Role change / activate / deactivate (rules in §17) |
-| `/api/staff/invitations` | GET | Invitation list (manager/super-admin) |
-| `/api/staff/invitations/check` | POST | Validate invite code + email |
-| `/api/staff/invitations/accept` | POST | Accept invitation (transactional) → session (+ MFA cycle for managers) |
 
 ## 12. Data models — catalogue & customers
 
@@ -149,10 +141,9 @@ Portal pages are guarded by `requireStaff`; page-level permission checks gate re
 
 ## 14. Data models — staff & security
 
-- **StaffProfile** (`models/StaffProfile.ts`): email (unique), `passwordHash` (`select:false`), role, `isActive`, `mfaEnabled`, `mfaSecretEncrypted` (AES-256-GCM, `select:false`), `mfaVerifiedAt`, `lastLoginAt`, `invitedBy`.
-- **StaffSession** (`models/StaffSession.ts`): `tokenHash` (unique), `staffId`, **`mfaVerified: boolean`** (default false) — a session is usable for MFA-required roles only when `mfaVerified` is true (§18).
-- **StaffInvitation** (`models/StaffInvitation.ts`): `email`, `role`, `codeHash` (unique — plaintext code never stored), `invitedBy`, `expiresAt`, `acceptedAt`, `status` (`PENDING`/`USED`/`EXPIRED`).
-- **AuditLog** (`models/AuditLog.ts`): opaque `action` + actor/target breadcrumbs + metadata; doc comment mandates **no secrets, session tokens or full invitation codes** are ever written.
+- **StaffProfile** (`models/StaffProfile.ts`): email (unique), `passwordHash` (`select:false`), role, `isActive`, `lastLoginAt`, `invitedBy` (creator reference).
+- **StaffSession** (`models/StaffSession.ts`): `tokenHash` (unique), `staffId`, expiry TTL index.
+- **AuditLog** (`models/AuditLog.ts`): opaque `action` + actor/target breadcrumbs + metadata; doc comment mandates **no secrets or session tokens** are ever written.
 
 ## 15. Order lifecycle & status machine
 
@@ -181,30 +172,28 @@ Permissions (`STAFF_PERMISSION`) are centralised in `lib/constants/staff.ts` and
 
 ## 17. Team management rules
 
-- **Invitations**: Super-Admin may invite Manager or Cashier; Manager may invite Cashier only (target role never taken from the form). 7-day TTL; code hashed; duplicates/known emails rejected.
+- **Team creation**: Super-Admin may add Manager or Seller; Manager may add Seller only (target role never taken from the form). The admin sets the initial password (bcrypt-hashed at rest); duplicate/known emails are rejected.
 - **Role changes**: only Super-Admin may change roles; only Cashier ↔ Manager; nobody may change their own role; SUPER_ADMIN targets immutable.
 - **Activate/deactivate**: nobody may touch themselves; SUPER_ADMIN may manage any non-super-admin; MANAGER may manage Cashier only. Deactivating a Cashier kills their live session on next request (fresh DB revalidation).
-- Role changes do **not** retroactively upgrade an existing session — a promoted Cashier's old session cannot open portal pages and they must re-authenticate.
+- Role changes revoke existing staff sessions, so a promoted Cashier must sign in again; deactivating staff also kills their live session on the next request (fresh DB revalidation).
 
-## 18. Multi-factor authentication (MFA)
+## 18. Staff authentication
 
-- **Mandatory** for SUPER_ADMIN and MANAGER; **optional/refused** for CASHIER.
-- TOTP (otpauth) with AES-256-GCM-encrypted seed (`mfaSecretEncrypted`, `select:false`).
-- Flow: password login → `nexora_staff_mfa_pending` HMAC cookie (10 min) → first-time setup (`/pos/mfa-setup`) or code verify (`/pos/mfa-verify`) → full session only from `mfa/verify`.
-- **Session-level enforcement**: `loadCurrentStaff` returns null when `staffRoleRequiresMfa(role) && !session.mfaVerified`. A pre-MFA or stale session therefore can never reach Manager APIs, and no `/activate-mfa` bridge route exists anymore (removed; portal layout relies solely on `requireStaff`).
-- MFA verify is rate-limited/brute-force protected (max 5 attempts then the pending state is revoked).
+- Email + password authentication creates the staff session immediately; there is no OTP or second verification step.
+- Sessions are opaque HttpOnly cookies; only the token hash is stored server-side and re-validated against the staff profile on every request.
+- The old MFA endpoints, pending pre-auth cookie, and verify page have been removed.
 
 ## 19. Sessions & cookie security
 
-- **Staff**: `nexora_staff_session` HttpOnly cookie carrying an opaque random token; only its SHA-256 hash is stored; 12 h TTL. Each request re-reads the StaffProfile from MongoDB (`role`, `isActive`, `mfaVerified`) — role/status changes take effect immediately.
+- **Staff**: `nexora_staff_session` HttpOnly cookie carrying an opaque random token; only its SHA-256 hash is stored; 12 h TTL. Each request re-reads the StaffProfile from MongoDB (`role`, `isActive`) — role/status changes take effect immediately.
 - **Customer**: separate `nexora_*` HttpOnly session cookie; hash stored in `CustomerSession`; 30-day TTL with TTL index.
 - Different secret domains; logout revokes the server-side record; cookies flagged HttpOnly/Secure; no secrets in the client bundle.
 
 ## 20. Security controls catalogue
 
 - bcrypt password hashing (`select:false` on `passwordHash`); never logs credentials.
-- Invitation codes and session tokens hashed at rest; MFA seeds encrypted.
-- Login lockout after 5 consecutive failures for 15 min; MFA attempt caps; idempotency keys prevent checkout double-submits.
+- Session tokens hashed at rest.
+- Login lockout after 5 consecutive failures for 15 min; idempotency keys prevent checkout double-submits.
 - Zod validation on every payload; regex metacharacters cannot widen order search; `pageSize` capped server-side.
 - Money in integer paise; server re-reads prices/stock and never trusts browser totals or localStorage.
 - No secrets committed (`.env*` ignored); `.env.example` documents the five variables.
@@ -215,7 +204,7 @@ Permissions (`STAFF_PERMISSION`) are centralised in `lib/constants/staff.ts` and
 - **Category**: unique slug; `isActive+name`.
 - **Customer/StaffProfile**: unique email; `role+createdAt` (staff).
 - **Order**: `channel+status+createdAt`, `channel+createdAt`, `status+createdAt`, `customerId+createdAt`, `customerEmail+createdAt`, `createdAt`, `items.productId`, `placedByStaffId+createdAt`, unique orderNumber, sparse-unique `idempotencyKey`.
-- **Sessions (both)** + **StaffInvitation**: unique `tokenHash`/`codeHash`; `expiresAt` TTL (`expireAfterSeconds: 0`).
+- **Sessions (both)**: unique `tokenHash`; `expiresAt` TTL (`expireAfterSeconds: 0`).
 - **AuditLog**: `actorStaffId+createdAt`, `targetStaffId+createdAt`, `action+createdAt`.
 
 ## 22. Transactions & atomicity
@@ -224,7 +213,6 @@ MongoDB multi-document transactions (replica set required):
 
 - **Order creation** (`lib/services/order.service.ts`): order insert + stock decrement + (customer session attach when registered) atomically.
 - **Refund** (`lib/services/staff-orders.service.ts`): status → REFUNDED, payment → REFUNDED, stock restore, refund snapshot written together; double-refund impossible.
-- **Invitation acceptance** (`lib/services/invitation.service.ts`): code → USED + staff profile creation atomically.
 
 ## 23. Money, pricing & server authority
 
@@ -244,8 +232,6 @@ MongoDB multi-document transactions (replica set required):
 |---|---|
 | `MONGODB_URI` | Mongo connection string (replica-set capable, §22) |
 | `NEXT_PUBLIC_APP_URL` | Canonical base URL for the app |
-| `STAFF_SESSION_SECRET` | Signs staff session + MFA pending cookies |
-| `MFA_ENCRYPTION_KEY` | Derives AES-256-GCM key for MFA seed encryption |
 | `BUSINESS_TIMEZONE` | IANA zone for business-day boundaries / reports (default `Asia/Kolkata`) |
 
 `.env.example` documents each; `.env.local` holds real values and is git-ignored.
@@ -262,7 +248,7 @@ MongoDB multi-document transactions (replica set required):
 | `npm run test:unit` | Cart & validation unit tests |
 | `npm run test:api` | Integration tests (storefront API) |
 | `npm run test:account` | Customer account flow tests |
-| `npm run test:phase3` | Staff auth / MFA / invitations / team tests (54) |
+| `npm run test:phase3` | Staff auth / team management tests |
 | `npm run test:phase4` | Register / inventory / roles tests (27) |
 | `npm run test:phase5` | Orders / refund / reports tests (30) |
 | `npm run test:e2e` | E2E storefront placeholder (see §27) |
@@ -287,7 +273,7 @@ MongoDB multi-document transactions (replica set required):
 **Remaining external configuration (production handoff):**
 
 - Point `MONGODB_URI` at a replica-set-capable deployment (Atlas `mongodb+srv://` or self-managed replica set).
-- Generate random `STAFF_SESSION_SECRET` and `MFA_ENCRYPTION_KEY` per environment (documented generation commands in `.env.example`); keep them out of the repo.
+- Generate random secrets per environment; keep them out of the repo.
 - Verify `BUSINESS_TIMEZONE` for the store's actual zone.
 - Run `npm run seed` (catalogue) and `npm run create-super-admin`; optionally `npm run seed:accounts` for demo data — note the demo orders count toward the qualifying buckets in reports (the phase5 suite accounts for this via baselines).
 - Replace the `test:e2e` placeholder with a real HTTP/browser suite when E2E coverage is required.
