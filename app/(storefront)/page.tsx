@@ -138,6 +138,31 @@ export default async function HomePage() {
               ))}
             </ul>
           </section>
+
+          <section className="grid overflow-hidden rounded-3xl bg-slate-950 text-white shadow-xl lg:grid-cols-[1.2fr_0.8fr]" aria-labelledby="cod-home">
+            <div className="p-6 sm:p-8 lg:p-10">
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-indigo-300">Simple checkout</p>
+              <h2 id="cod-home" className="mt-2 text-2xl font-black sm:text-3xl">Order online. Pay when it arrives.</h2>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">
+                Nexora website orders use Cash on Delivery, so checkout never asks for card, UPI, or bank-transfer details. Staff record payment only after delivery.
+              </p>
+              <Link href="/products" className={`${buttonClasses("primary", "md")} mt-6`}>
+                Explore the catalogue
+              </Link>
+            </div>
+            <div className="grid grid-cols-2 gap-px bg-white/10 p-px sm:grid-cols-3 lg:grid-cols-1">
+              {[
+                ["01", "Choose live catalogue items"],
+                ["02", "Confirm your delivery address"],
+                ["03", "Pay cash on delivery"],
+              ].map(([step, label]) => (
+                <div key={step} className="bg-slate-900 p-5 sm:p-6">
+                  <span className="text-xs font-black text-indigo-300">{step}</span>
+                  <p className="mt-2 text-sm font-semibold text-slate-100">{label}</p>
+                </div>
+              ))}
+            </div>
+          </section>
         </>
       )}
     </div>

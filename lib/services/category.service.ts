@@ -24,6 +24,13 @@ interface LeanCategory {
   isActive?: boolean;
 }
 
+function canonicalCategoryIdentity(category: Pick<LeanCategory, "name" | "slug">) {
+  if (category.slug.toLowerCase() === "moblie" || category.name.trim().toLowerCase() === "moblie") {
+    return { name: "Mobile", slug: "mobile" };
+  }
+  return { name: category.name, slug: category.slug };
+}
+
 async function loadActiveCategories(): Promise<CategorySummary[]> {
   await ensureRequestTime();
 
@@ -44,14 +51,17 @@ async function loadActiveCategories(): Promise<CategorySummary[]> {
     ]);
     const countByCategory = new Map(counts.map((row) => [String(row._id), row.count]));
 
-    return categories.map((category) => ({
-      id: String(category._id),
-      name: category.name,
-      slug: category.slug,
-      description: category.description ?? "",
-      image: category.image ?? "",
-      productCount: countByCategory.get(String(category._id)) ?? 0,
-    }));
+    return categories.map((category) => {
+      const identity = canonicalCategoryIdentity(category);
+      return {
+        id: String(category._id),
+        name: identity.name,
+        slug: identity.slug,
+        description: category.description ?? "",
+        image: category.image ?? "",
+        productCount: countByCategory.get(String(category._id)) ?? 0,
+      };
+    });
   } catch (error) {
     throw toDatabaseError(error);
   }
@@ -64,7 +74,8 @@ export async function getActiveCategoryBySlug(
   slug: string,
 ): Promise<CategorySummary | null> {
   const categories = await listActiveCategories();
-  return categories.find((category) => category.slug === slug) ?? null;
+  const requested = slug.toLowerCase() === "moblie" ? "mobile" : slug;
+  return categories.find((category) => category.slug === requested) ?? null;
 }
 
 /** Header/navigation helper - an unavailable database must not break the shell. */
@@ -102,15 +113,18 @@ export async function listAllCategoriesForStaff(): Promise<StaffCategoryView[]> 
     ]);
     const countMap = new Map(counts.map((c) => [String(c._id), c.count]));
 
-    return categories.map((c) => ({
-      id: String(c._id),
-      name: c.name,
-      slug: c.slug,
-      description: c.description ?? "",
-      image: c.image ?? "",
-      isActive: c.isActive ?? true,
-      productCount: countMap.get(String(c._id)) ?? 0,
-    }));
+    return categories.map((c) => {
+      const identity = canonicalCategoryIdentity(c);
+      return {
+        id: String(c._id),
+        name: identity.name,
+        slug: identity.slug,
+        description: c.description ?? "",
+        image: c.image ?? "",
+        isActive: c.isActive ?? true,
+        productCount: countMap.get(String(c._id)) ?? 0,
+      };
+    });
   } catch (error) {
     throw toDatabaseError(error);
   }

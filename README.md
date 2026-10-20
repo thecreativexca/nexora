@@ -4,7 +4,7 @@ Nexora is a complete point-of-sale + ecommerce storefront built with Next.js (Ap
 
 ## Key features
 - Public storefront (products, categories, search, cart validation, PayPal checkout with guest support, order tracking)
-- Customer accounts (email/password, Google, Facebook, OTP password recovery, protected account area, order history)
+- Customer accounts (email/password, Google sign-in, OTP password recovery, protected account area, order history)
 - POS portal (/pos) for staff (SUPER_ADMIN/MANAGER/CASHIER) with role-based permissions
 - Staff sign-in with email + password (no second verification step)
 - Team Access (direct team member creation with email + password, role changes, activate/deactivate) with audit logging
@@ -94,16 +94,39 @@ Roles: SUPER_ADMIN, MANAGER, CASHIER. Permissions centralized in lib/constants/s
 
 PayPal order creation, capture, amount/currency checks, and refund calls happen server-side. `stock` is available stock: reservation decrements it atomically, capture consumes it without a second decrement, and cancellation/definite failure/expiry restores it once. `paypalOrderId` and `paypalCaptureId` have unique indexes.
 
-## Google and Facebook customer OAuth
+## Google customer sign-in
 
-Create OAuth web applications and configure these exact redirect URIs (replace the origin with `NEXT_PUBLIC_APP_URL`):
+The sign-in and registration pages expose a **Continue with Google** button. On the first Google sign-in a customer account is created automatically; if a customer with the same verified Google email already exists, the Google identity is linked to that account. Google sign-in creates a normal customer session and never creates or authorizes a staff session for `/pos`.
 
-- Google: `https://YOUR_DOMAIN/api/account/oauth/google/callback`
-- Facebook: `https://YOUR_DOMAIN/api/account/oauth/facebook/callback`
+### Google Cloud setup
 
-Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `FACEBOOK_CLIENT_ID`, and `FACEBOOK_CLIENT_SECRET`. Google uses authorization code + state + PKCE and requires `email_verified`. Facebook uses authorization code + state. Provider access tokens are used only to fetch identity and are not persisted. Provider identities live in `OAuthAccount` with a unique `(provider, providerAccountId)` index and point to the existing `Customer` entity. A verified Google email may link to an existing same-email customer; Facebook is deliberately refused on a collision so an unverified email claim cannot take over an account. Customer OAuth never creates a staff session and cannot authorize `/pos`.
+1. Open the [Google Cloud Console credentials page](https://console.cloud.google.com/apis/credentials).
+2. Configure the OAuth consent screen (External is fine for testing; add test users while the app is in testing mode).
+3. Create an OAuth client ID of type **Web application**.
+4. Add the app origin under **Authorised JavaScript origins**, for example `http://localhost:3000`.
+5. Add this exact redirect URI under **Authorised redirect URIs**:
+   `http://localhost:3000/api/account/oauth/google/callback`
+   For production, replace the origin with the deployed `NEXT_PUBLIC_APP_URL`.
+6. Put the client ID and secret in `.env.local`:
 
-For local setup, register callbacks using the exact `NEXT_PUBLIC_APP_URL`, for example `http://localhost:3000/api/account/oauth/google/callback`. Production Facebook Login generally requires HTTPS and an approved/live app configuration.
+   ```dotenv
+   GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+   GOOGLE_CLIENT_SECRET=your-client-secret
+   ```
+
+7. Restart `npm run dev`, then verify the setup with:
+
+   ```bash
+   npm run check:google
+   ```
+
+   The command prints the exact redirect URI to register and never prints secret values.
+
+### How the flow is protected
+
+Google uses authorization code + state + PKCE. The signed, HttpOnly state cookie expires after 10 minutes and the return path is restricted to in-app URLs. Google identities must report `email_verified: true`. Provider access tokens are used only to fetch the profile and are not persisted. Identities live in `OAuthAccount` with a unique `(provider, providerAccountId)` index pointing at `Customer`.
+
+Only Google is enabled today; the `OAuthAccount` provider enum reserves `facebook`, but there is no Facebook route or configuration.
 
 ## Resend password-reset OTP
 

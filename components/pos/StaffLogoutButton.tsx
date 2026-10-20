@@ -26,7 +26,7 @@ export function StaffLogoutButton() {
       router.replace(result.data.redirectTo);
       return;
     }
-    router.replace("/pos/login");
+    router.replace("/account/login");
   }
 
   return (

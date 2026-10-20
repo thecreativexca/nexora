@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="500" height="500">
+  <rect width="500" height="500" fill="#ffffff" />
+  <defs>
+    <filter id="plugShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="16" stdDeviation="22" flood-color="#000000" flood-opacity="0.12" />
+    </filter>
+    <linearGradient id="plugFace" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="100%" stop-color="#f1f5f9" />
+    </linearGradient>
+  </defs>
+
+  <g filter="url(#plugShadow)" transform="translate(250, 240)">
+    <!-- Plug Outer Bezel -->
+    <rect x="-110" y="-110" width="220" height="220" rx="44" fill="url(#plugFace)" stroke="#e2e8f0" stroke-width="4" />
+    <!-- Socket Inset -->
+    <circle cx="0" cy="0" r="76" fill="#f8fafc" stroke="#cbd5e1" stroke-width="3" />
+    
+    <!-- Pin receptacles -->
+    <rect x="-34" y="-36" width="12" height="32" rx="4" fill="#334155" />
+    <rect x="22" y="-36" width="12" height="32" rx="4" fill="#334155" />
+    <ellipse cx="0" cy="30" rx="10" ry="12" fill="#334155" />
+
+    <!-- Green LED Status Light -->
+    <circle cx="0" cy="-78" r="6" fill="#22c55e" filter="drop-shadow(0 0 8px #22c55e)" />
+    
+    <!-- Power Button Indicator on Side -->
+    <rect x="106" y="-20" width="8" height="40" rx="4" fill="#94a3b8" />
+  </g>
+</svg>

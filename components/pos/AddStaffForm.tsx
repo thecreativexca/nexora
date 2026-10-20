@@ -94,7 +94,7 @@ export function AddStaffForm({ canAddManager }: { canAddManager: boolean }) {
               {created.name} was added as {STAFF_ROLE_LABELS[created.role]}.
             </p>
             <p className="mt-1">
-              They can sign in at <span className="font-semibold">/pos/login</span> with{" "}
+              They can sign in at <span className="font-semibold">/account/login</span> with{" "}
               <span className="font-semibold">{created.email}</span> and the password
               you set.
             </p>

@@ -11,7 +11,7 @@ export const metadata: Metadata = {
     template: "%s | Nexora",
   },
   description:
-    "Shop phones, laptops, tablets, accessories and in-house repair services from Nexora with flexible offline payment.",
+    "Shop phones, laptops, tablets, accessories and in-house repair services from Nexora with Cash on Delivery.",
 };
 
 /**

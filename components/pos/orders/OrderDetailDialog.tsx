@@ -12,6 +12,7 @@ import { Price } from "@/components/ui/Price";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
+import { ReceiptPanel } from "@/components/pos/register/ReceiptPanel";
 import { ORDER_CHANNEL_LABELS, ORDER_STATUS_LABELS } from "@/lib/constants/order";
 import { formatDateTime } from "@/lib/utils/format";
 import { formatMoney } from "@/lib/utils/money";
@@ -19,6 +20,36 @@ import type {
   OrderStatus,
 } from "@/lib/constants/order";
 import type { StaffOrderDetail, StaffOrderRefundResult } from "@/types/order";
+import type { PosReceipt } from "@/types/pos";
+
+function toReceipt(order: StaffOrderDetail): PosReceipt {
+  const amountPaidInPaise = order.amountPaidInPaise ?? order.totalInPaise;
+  return {
+    orderNumber: order.orderNumber,
+    status: order.status,
+    statusLabel: order.statusLabel,
+    paymentMethod: order.paymentMethod,
+    paymentMethodLabel: order.paymentMethodLabel,
+    paymentStatus: order.paymentStatus,
+    paymentStatusLabel: order.paymentStatusLabel,
+    customerId: order.customerId,
+    customerName: order.customerName || null,
+    customerEmail: order.customerEmail || null,
+    customerPhone: order.customerPhone || null,
+    staffName: order.placedByName,
+    items: order.items,
+    subtotalInPaise: order.subtotalInPaise,
+    discountInPaise: order.discountInPaise,
+    taxInPaise: order.taxInPaise,
+    totalInPaise: order.totalInPaise,
+    amountPaidInPaise,
+    outstandingDueInPaise: Math.max(0, order.totalInPaise - amountPaidInPaise),
+    changeInPaise: order.changeInPaise ?? 0,
+    itemCount: order.itemCount,
+    createdAt: order.placedAt,
+    replayed: true,
+  };
+}
 
 /**
  * Full order detail dialog. Everything rendered comes from the order's own
@@ -48,6 +79,7 @@ export function OrderDetailDialog({
   const [refundOpen, setRefundOpen] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [receiptOpen, setReceiptOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -152,6 +184,12 @@ export function OrderDetailDialog({
                   Placed {formatDateTime(order.placedAt)}
                 </span>
               </div>
+
+              {order.channel === "IN_STORE" ? (
+                <Button variant="secondary" size="sm" onClick={() => setReceiptOpen(true)}>
+                  View / reprint receipt
+                </Button>
+              ) : null}
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="rounded-xl border border-slate-200 p-3">
@@ -390,6 +428,10 @@ export function OrderDetailDialog({
           onClose={() => setRefundOpen(false)}
           onDone={handleRefundDone}
         />
+      ) : null}
+
+      {receiptOpen && order ? (
+        <ReceiptPanel receipt={toReceipt(order)} onClose={() => setReceiptOpen(false)} />
       ) : null}
     </div>
   );

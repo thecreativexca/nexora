@@ -29,6 +29,7 @@ import {
   verifyResetOtpSchema,
 } from "@/lib/validations/customer";
 import { checkoutSchema } from "@/lib/validations/order";
+import { categoryCreateSchema } from "@/lib/validations/pos";
 import type { CartLine } from "@/types/cart";
 
 const PHONE_ID = "64b7f1c2a4d3e5f60718293a";
@@ -234,8 +235,15 @@ check("a valid guest checkout payload passes", () => {
   if (result.success) assertEqual(result.data.paymentMethod, "CASH", "Offline cash default");
 });
 
-check("online checkout rejects historical payment-on-delivery", () => {
-  assertFalse(checkoutSchema.safeParse({ ...validCheckout, paymentMethod: "PAY_ON_DELIVERY" }).success, "COD rejected");
+check("public checkout accepts COD cash and rejects alternate tenders", () => {
+  assertTrue(checkoutSchema.safeParse({ ...validCheckout, paymentMethod: "CASH" }).success, "COD accepted");
+  assertFalse(checkoutSchema.safeParse({ ...validCheckout, paymentMethod: "UPI" }).success, "UPI rejected");
+  assertFalse(checkoutSchema.safeParse({ ...validCheckout, paymentMethod: "CARD" }).success, "card rejected");
+});
+
+check("catalogue image fields reject application routes such as /moblie", () => {
+  assertFalse(categoryCreateSchema.safeParse({ name: "Mobile", image: "/moblie" }).success, "bad route rejected");
+  assertTrue(categoryCreateSchema.safeParse({ name: "Mobile", image: "https://example.com/mobile.webp" }).success, "remote image accepted");
 });
 
 check("invalid email, phone, postal code and quantity are rejected", () => {

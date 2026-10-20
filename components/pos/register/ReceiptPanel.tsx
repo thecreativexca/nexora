@@ -1,5 +1,8 @@
 "use client";
 
+import { useState } from "react";
+
+import { Logo } from "@/components/common/Logo";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Price } from "@/components/ui/Price";
@@ -11,10 +14,13 @@ import type { PosReceipt } from "@/types/pos";
 export function ReceiptPanel({
   receipt,
   onNewSale,
+  onClose,
 }: {
   receipt: PosReceipt;
-  onNewSale: () => void;
+  onNewSale?: () => void;
+  onClose?: () => void;
 }) {
+  const [paper, setPaper] = useState<"58mm" | "80mm" | "a4">("80mm");
   const showChange = receipt.paymentMethod === PAYMENT_METHOD.CASH && receipt.changeInPaise > 0;
   const isPendingVerification = receipt.paymentStatus === "PENDING_VERIFICATION";
   const hasDues = (receipt.outstandingDueInPaise ?? 0) > 0;
@@ -26,9 +32,12 @@ export function ReceiptPanel({
       aria-modal="true"
       aria-label="Sale receipt"
     >
-      <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl print:shadow-none print:max-h-none print:max-w-none print:p-2">
+      <div data-receipt-paper={paper} className="receipt-sheet max-h-[92vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl print:max-h-none print:p-2 print:shadow-none">
         <div className="border-b border-dashed border-slate-300 pb-4 text-center">
-          <h2 className="text-xl font-black tracking-tight text-slate-900">Nexora</h2>
+          <div className="flex justify-center"><Logo compact /></div>
+          <h2 className="mt-2 text-xl font-black tracking-tight text-slate-900">{receipt.business?.name || "Nexora"}</h2>
+          {receipt.business?.address ? <p className="mt-1 text-xs text-slate-600">{receipt.business.address}</p> : null}
+          {receipt.business?.contact ? <p className="text-xs text-slate-600">{receipt.business.contact}</p> : null}
           <p className="text-xs font-medium uppercase tracking-widest text-slate-500">
             In-store receipt / Invoice
           </p>
@@ -149,18 +158,35 @@ export function ReceiptPanel({
           </p>
         </div>
 
-        <div className="mt-6 flex items-center gap-3 print:hidden">
+        <div className="mt-6 space-y-3 print:hidden">
+          <label className="flex items-center justify-between gap-3 text-sm font-semibold text-slate-700">
+            Paper size
+            <select value={paper} onChange={(event) => setPaper(event.target.value as typeof paper)} className="h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm">
+              <option value="58mm">58mm thermal</option>
+              <option value="80mm">80mm thermal</option>
+              <option value="a4">A4</option>
+            </select>
+          </label>
+          <div className="flex flex-col gap-2 sm:flex-row">
           <Button
             variant="secondary"
             size="lg"
             className="flex-1"
             onClick={() => window.print()}
           >
-            Print receipt
+            Print Bill
           </Button>
-          <Button size="lg" className="flex-1" onClick={onNewSale}>
-            New sale
+          <a
+            href={`/api/pos/orders/${encodeURIComponent(receipt.orderNumber)}/receipt?format=pdf`}
+            download
+            className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+          >
+            Download PDF
+          </a>
+          <Button size="lg" className="flex-1" onClick={onNewSale ?? onClose}>
+            {onNewSale ? "New sale" : "Close"}
           </Button>
+          </div>
         </div>
       </div>
     </div>

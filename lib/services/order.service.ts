@@ -145,7 +145,10 @@ export function toOrderView(order: LeanOrder): OrderView {
     statusLabel: ORDER_STATUS_LABELS[order.status],
     statusTone: ORDER_STATUS_TONES[order.status],
     paymentMethod: order.paymentMethod,
-    paymentMethodLabel: PAYMENT_METHOD_LABELS[order.paymentMethod],
+    paymentMethodLabel:
+      order.channel === ORDER_CHANNEL.ONLINE && order.paymentMethod === PAYMENT_METHOD.CASH
+        ? "Cash on Delivery"
+        : PAYMENT_METHOD_LABELS[order.paymentMethod],
     paymentStatus: order.paymentStatus,
     paymentStatusLabel: PAYMENT_STATUS_LABELS[order.paymentStatus],
     customerId: order.customerId ? String(order.customerId) : null,
@@ -191,7 +194,10 @@ function toCustomerOrderSummary(order: LeanOrder): CustomerOrderSummary {
     status: order.status,
     statusLabel: ORDER_STATUS_LABELS[order.status],
     statusTone: ORDER_STATUS_TONES[order.status],
-    paymentMethodLabel: PAYMENT_METHOD_LABELS[order.paymentMethod],
+    paymentMethodLabel:
+      order.channel === ORDER_CHANNEL.ONLINE && order.paymentMethod === PAYMENT_METHOD.CASH
+        ? "Cash on Delivery"
+        : PAYMENT_METHOD_LABELS[order.paymentMethod],
     paymentStatus: order.paymentStatus,
     paymentStatusLabel: PAYMENT_STATUS_LABELS[order.paymentStatus],
     totalInPaise: order.totalInPaise,
@@ -229,6 +235,12 @@ function toPosReceipt(
   const outstandingDueInPaise = Math.max(0, order.totalInPaise - amountPaidInPaise);
 
   return {
+    business: {
+      name: process.env.BUSINESS_NAME?.trim() || "Nexora",
+      address: process.env.BUSINESS_ADDRESS?.trim() || "",
+      contact: process.env.BUSINESS_CONTACT?.trim() || "",
+      logoUrl: "/nexora-logo.svg",
+    },
     orderNumber: order.orderNumber,
     status: order.status,
     statusLabel: ORDER_STATUS_LABELS[order.status],
@@ -441,7 +453,12 @@ export async function createOnlineOrder(
   const discountInPaise = 0;
   const totalInPaise = subtotalInPaise - discountInPaise + taxInPaise;
 
-  const paymentMethod = payload.paymentMethod ?? PAYMENT_METHOD.CASH;
+  // The public storefront is COD-only. The schema rejects manipulated values;
+  // this explicit guard protects direct service callers as well.
+  if (payload.paymentMethod !== PAYMENT_METHOD.CASH) {
+    throw new InvalidRequestError("Public checkout supports Cash on Delivery only.");
+  }
+  const paymentMethod = PAYMENT_METHOD.CASH;
 
   const orderBase = {
     channel: ORDER_CHANNEL.ONLINE,

@@ -134,7 +134,10 @@ function toStaffOrderSummary(order: LeanOrderRecord): StaffOrderSummary {
     customerName: order.customerName,
     customerEmail: order.customerEmail,
     paymentMethod: order.paymentMethod,
-    paymentMethodLabel: PAYMENT_METHOD_LABELS[order.paymentMethod],
+    paymentMethodLabel:
+      order.channel === ORDER_CHANNEL.ONLINE && order.paymentMethod === PAYMENT_METHOD.CASH
+        ? "Cash on Delivery"
+        : PAYMENT_METHOD_LABELS[order.paymentMethod],
     paymentStatus: order.paymentStatus,
     paymentStatusLabel: PAYMENT_STATUS_LABELS[order.paymentStatus],
     itemCount: itemCountOf(order.items),
@@ -176,7 +179,10 @@ function toStaffOrderDetail(
     statusLabel: ORDER_STATUS_LABELS[order.status],
     statusTone: ORDER_STATUS_TONES[order.status],
     paymentMethod: order.paymentMethod,
-    paymentMethodLabel: PAYMENT_METHOD_LABELS[order.paymentMethod],
+    paymentMethodLabel:
+      order.channel === ORDER_CHANNEL.ONLINE && order.paymentMethod === PAYMENT_METHOD.CASH
+        ? "Cash on Delivery"
+        : PAYMENT_METHOD_LABELS[order.paymentMethod],
     paymentStatus: order.paymentStatus,
     paymentStatusLabel: PAYMENT_STATUS_LABELS[order.paymentStatus],
     customerId: order.customerId ? String(order.customerId) : null,

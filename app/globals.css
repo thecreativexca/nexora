@@ -84,3 +84,22 @@ input[type="search"]::-webkit-search-cancel-button {
   appearance: none;
 }
 
+@media print {
+  @page { margin: 6mm; }
+  body { background: white !important; }
+  body * { visibility: hidden !important; }
+  .receipt-sheet,
+  .receipt-sheet * { visibility: visible !important; }
+  .receipt-sheet {
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
+    font-size: 10px !important;
+  }
+  .receipt-sheet[data-receipt-paper="58mm"] { width: 58mm !important; max-width: 58mm !important; }
+  .receipt-sheet[data-receipt-paper="80mm"] { width: 80mm !important; max-width: 80mm !important; }
+  .receipt-sheet[data-receipt-paper="a4"] { width: 190mm !important; max-width: 190mm !important; padding: 12mm !important; }
+}
+

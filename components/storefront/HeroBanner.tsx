@@ -19,11 +19,11 @@ export function HeroBanner({ categories }: { categories: CategorySummary[] }) {
             Nexora electronics
           </p>
           <h1 className="mt-3 text-3xl font-black leading-tight tracking-tight sm:text-4xl lg:text-5xl">
-            Devices, accessories and repairs - delivered to your door
+            Devices and accessories, delivered to your door
           </h1>
           <p className="mt-4 max-w-xl text-sm text-slate-200 sm:text-base">
             Browse the live catalogue, build your bag and check out as a guest or member. Every
-            online order is completed through offline payment on delivery or in-store collection.
+            website order uses Cash on Delivery.
           </p>
 
           <ul className="mt-6 flex flex-col gap-2 text-sm text-slate-200">

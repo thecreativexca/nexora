@@ -15,7 +15,7 @@ export async function POST() {
       });
     }
     await destroyStaffSession();
-    return toSuccessResponse({ ok: true, redirectTo: "/pos/login" });
+    return toSuccessResponse({ ok: true, redirectTo: "/account/login" });
   } catch (error) {
     return toErrorResponse(error, "POST /api/staff/logout failed");
   }

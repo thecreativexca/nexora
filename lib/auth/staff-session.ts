@@ -115,10 +115,10 @@ async function loadCurrentStaff(): Promise<StaffView | null> {
 /** Request-scoped memoisation so a render pass only resolves the session once. */
 export const getCurrentStaff = cache(loadCurrentStaff);
 
-/** Server-side gate for protected portal pages. Redirects to /pos/login. */
+/** Server-side gate for protected portal pages. Uses the unified login. */
 export async function requireStaff(): Promise<StaffView> {
   const staff = await getCurrentStaff();
-  if (!staff) redirect("/pos/login");
+  if (!staff) redirect("/account/login?next=%2Fpos");
   return staff;
 }
 

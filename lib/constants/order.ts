@@ -173,9 +173,6 @@ export const POS_SALE_PAYMENT_METHODS = [
  */
 export const STOREFRONT_PAYMENT_METHODS = [
   PAYMENT_METHOD.CASH,
-  PAYMENT_METHOD.UPI,
-  PAYMENT_METHOD.CARD,
-  PAYMENT_METHOD.BANK_TRANSFER,
 ] as const;
 export type StorefrontPaymentMethod = (typeof STOREFRONT_PAYMENT_METHODS)[number];
 

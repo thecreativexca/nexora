@@ -16,16 +16,11 @@ import { useCart } from "@/hooks/useCart";
 import { formatMoney } from "@/lib/utils/money";
 import {
   PAYMENT_METHOD,
-  PAYMENT_METHOD_LABELS,
-  PAYMENT_METHOD_DESCRIPTIONS,
-  STOREFRONT_PAYMENT_METHODS,
-  type StorefrontPaymentMethod,
 } from "@/lib/constants/order";
 import { checkoutFieldSchemas, type CheckoutFieldName } from "@/lib/validations/common";
 import type { CartLineValidation, CartValidation } from "@/types/cart";
 import type { CustomerView } from "@/types/customer";
 import { placeOrderAction } from "@/app/(storefront)/checkout/actions";
-import { cn } from "@/lib/utils/cn";
 
 export interface CheckoutFormValues {
   customerName: string;
@@ -98,14 +93,6 @@ const FIELD_LABELS: Record<string, string> = {
   form: "Order",
 };
 
-/** Payment method icons for storefront */
-const PAYMENT_METHOD_ICONS: Record<StorefrontPaymentMethod, string> = {
-  CASH: "💵",
-  UPI: "📱",
-  CARD: "💳",
-  BANK_TRANSFER: "🏦",
-};
-
 function validateClientSide(values: CheckoutFormValues): Record<string, string> {
   const errors: Record<string, string> = {};
 
@@ -132,9 +119,7 @@ export function CheckoutView({ customer }: { customer: CustomerView | null }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [validation, setValidation] = useState<CartValidation | null>(null);
   const [isValidating, setIsValidating] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<StorefrontPaymentMethod>(
-    STOREFRONT_PAYMENT_METHODS[0],
-  );
+  const paymentMethod = PAYMENT_METHOD.CASH;
   const linesRef = useRef(lines);
   const errorSummaryRef = useRef<HTMLDivElement>(null);
 
@@ -455,58 +440,18 @@ export function CheckoutView({ customer }: { customer: CustomerView | null }) {
           ) : null}
         </fieldset>
 
-        {/* Offline payment method selection */}
-        <fieldset>
-          <legend className="mb-2 text-sm font-semibold text-slate-900">
-            How would you like to pay?
-          </legend>
-          <p className="mb-3 text-xs text-slate-500">
-            Pay at store, on delivery, or via transfer — no online payment is taken now.
-          </p>
-          <div className="grid grid-cols-2 gap-3">
-            {STOREFRONT_PAYMENT_METHODS.map((method) => (
-              <label
-                key={method}
-                title={PAYMENT_METHOD_DESCRIPTIONS[method]}
-                className={cn(
-                  "flex cursor-pointer items-center gap-2 rounded-xl border p-3 text-sm font-medium transition-colors",
-                  paymentMethod === method
-                    ? "border-indigo-600 bg-indigo-50 text-indigo-900 ring-1 ring-indigo-600"
-                    : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50",
-                )}
-              >
-                <input
-                  type="radio"
-                  name="storefront-payment-method"
-                  value={method}
-                  checked={paymentMethod === method}
-                  onChange={() => setPaymentMethod(method)}
-                  disabled={isSubmitting}
-                  className="sr-only"
-                />
-                <span aria-hidden className="text-base">
-                  {PAYMENT_METHOD_ICONS[method]}
-                </span>
-                <span>{PAYMENT_METHOD_LABELS[method]}</span>
-              </label>
-            ))}
+        <section aria-labelledby="cod-payment" className="rounded-2xl border border-indigo-200 bg-indigo-50/70 p-4 text-sm text-slate-700">
+          <div className="flex items-start gap-3">
+            <span aria-hidden className="text-2xl">💵</span>
+            <div>
+              <h2 id="cod-payment" className="font-bold text-indigo-950">Cash on Delivery</h2>
+              <p className="mt-1 leading-6 text-slate-600">
+                Pay in cash when your order is delivered. No card, UPI, bank transfer, or online payment is accepted on this checkout.
+              </p>
+              <p className="mt-2 text-xs font-semibold text-amber-800">Payment status: unpaid until collected by authorized staff</p>
+            </div>
           </div>
-          <p className="mt-2 text-xs text-slate-500">
-            {PAYMENT_METHOD_DESCRIPTIONS[paymentMethod]}
-          </p>
-        </fieldset>
-
-        {/* Payment summary info */}
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-          <p className="font-semibold text-slate-900">
-            Payment: {PAYMENT_METHOD_LABELS[paymentMethod]}
-          </p>
-          <p className="mt-1 text-slate-600">
-            Your order will be placed as <span className="font-medium text-amber-700">unpaid</span>.
-            Our team will confirm payment with you after you receive or collect your order.
-            No online payment is taken at checkout.
-          </p>
-        </div>
+        </section>
 
         <div className="flex flex-col gap-2">
           <button

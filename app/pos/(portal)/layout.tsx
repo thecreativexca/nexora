@@ -11,7 +11,7 @@ import { Logo } from "@/components/common/Logo";
 /**
  * Signed-in portal shell. `requireStaff` re-validates the session on every
  * request: an expired/revoked session resolves to NULL and the member is sent
- * to /pos/login to sign in again.
+ * to the unified /account/login screen to sign in again.
  */
 export default async function PosPortalLayout({ children }: { children: ReactNode }) {
   const staff = await requireStaff();

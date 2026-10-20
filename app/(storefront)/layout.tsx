@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { CartDrawer } from "@/components/cart/CartDrawer";
 import { SiteFooter } from "@/components/common/SiteFooter";
 import { SiteHeader } from "@/components/common/SiteHeader";
+import { StorefrontChrome } from "@/components/common/StorefrontChrome";
 import { CartProvider } from "@/lib/cart/CartProvider";
 
 /** Public storefront shell: header, cart, footer. Not present on /pos. */
@@ -15,12 +16,13 @@ export default function StorefrontLayout({ children }: { children: ReactNode }) 
       >
         Skip to content
       </a>
-      <SiteHeader />
-      <main id="main-content" className="flex-1">
+      <StorefrontChrome
+        header={<SiteHeader />}
+        footer={<SiteFooter />}
+        cart={<CartDrawer />}
+      >
         {children}
-      </main>
-      <SiteFooter />
-      <CartDrawer />
+      </StorefrontChrome>
     </CartProvider>
   );
 }

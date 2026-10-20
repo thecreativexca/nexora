@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="500" height="500">
+  <rect width="500" height="500" fill="#ffffff" />
+  <defs>
+    <filter id="camShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="16" stdDeviation="22" flood-color="#000000" flood-opacity="0.12" />
+    </filter>
+    <radialGradient id="lensReflect" cx="35%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="30%" stop-color="#1e1b4b" />
+      <stop offset="100%" stop-color="#020617" />
+    </radialGradient>
+  </defs>
+
+  <g filter="url(#camShadow)" transform="translate(250, 240)">
+    <!-- Base stand -->
+    <ellipse cx="0" cy="150" rx="90" ry="24" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="3" />
+    <path d="M -40 145 C -30 90, -20 60, 0 50 C 20 60, 30 90, 40 145 Z" fill="#e2e8f0" />
+
+    <!-- Spherical Camera Body -->
+    <circle cx="0" cy="-20" r="110" fill="#ffffff" stroke="#e2e8f0" stroke-width="4" />
+    
+    <!-- Glossy Black Face -->
+    <circle cx="0" cy="-20" r="82" fill="#09090b" />
+    
+    <!-- 2K Camera Glass Lens -->
+    <circle cx="0" cy="-20" r="44" fill="url(#lensReflect)" stroke="#1e293b" stroke-width="3" />
+    <!-- Aperture Reflection -->
+    <ellipse cx="-12" cy="-32" rx="14" ry="7" fill="#ffffff" opacity="0.5" transform="rotate(-30 -12 -32)" />
+
+    <!-- Status Blue LED -->
+    <circle cx="0" cy="-78" r="4" fill="#0ea5e9" filter="drop-shadow(0 0 6px #0ea5e9)" />
+    <!-- IR LED Dots -->
+    <circle cx="-55" cy="-20" r="3" fill="#dc2626" opacity="0.6" />
+    <circle cx="55" cy="-20" r="3" fill="#dc2626" opacity="0.6" />
+  </g>
+</svg>

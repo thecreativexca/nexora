@@ -5,6 +5,20 @@ import { useState } from "react";
 
 import { cn } from "@/lib/utils/cn";
 
+/** Prevents database text such as `/moblie` from being requested as an image route. */
+export function isSafeImageSource(src: string): boolean {
+  const value = src.trim();
+  if (!value) return false;
+  if (/^\/api\/pos\/images\/[a-f0-9]{24}$/i.test(value)) return true;
+  if (/^\/(?:images|assets)\/.+\.(?:avif|gif|jpe?g|png|svg|webp)(?:\?.*)?$/i.test(value)) return true;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Product image with a graceful fallback: URLs come from the database, so a
  * missing or unreachable image must never break the layout.
@@ -23,7 +37,7 @@ export function ProductImage({
   priority?: boolean;
 }) {
   const [failed, setFailed] = useState(false);
-  const showFallback = !src || failed;
+  const showFallback = !isSafeImageSource(src) || failed;
 
   return (
     <div

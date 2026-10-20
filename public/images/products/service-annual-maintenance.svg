@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="500" height="500">
+  <rect width="500" height="500" fill="#ffffff" />
+  <defs>
+    <linearGradient id="kitGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#1e293b" />
+    </linearGradient>
+    <filter id="boxShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="12" stdDeviation="18" flood-color="#000000" flood-opacity="0.14" />
+    </filter>
+  </defs>
+
+  <!-- Laptop / Server Diagnostics Visual -->
+  <g filter="url(#boxShadow)" transform="translate(250, 220)">
+    <!-- Base stand -->
+    <ellipse cx="0" cy="130" rx="140" ry="24" fill="#09090b" opacity="0.3" />
+
+    <!-- Open Laptop Base -->
+    <path d="M -160 110 L 160 110 L 130 135 L -130 135 Z" fill="#334155" stroke="#475569" stroke-width="2" />
+    <!-- Laptop Screen -->
+    <rect x="-130" y="-85" width="260" height="180" rx="12" fill="url(#kitGrad)" stroke="#64748b" stroke-width="2" />
+    
+    <!-- Screen Health Chart -->
+    <rect x="-115" y="-70" width="230" height="150" rx="6" fill="#020617" />
+    
+    <!-- Pulse Line / Diagnostics -->
+    <path d="M -100 15 L -60 15 L -40 -30 L -15 45 L 15 -45 L 35 25 L 55 15 L 100 15" 
+          fill="none" stroke="#22c55e" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+    
+    <!-- Metrics bars -->
+    <rect x="-100" y="-55" width="50" height="6" rx="3" fill="#38bdf8" />
+    <rect x="-100" y="-42" width="75" height="6" rx="3" fill="#818cf8" />
+    <rect x="55" y="-55" width="45" height="16" rx="8" fill="#15803d" />
+    <text x="77" y="-43" text-anchor="middle" font-family="-apple-system, sans-serif" font-size="9" font-weight="800" fill="#ffffff">99.8% OK</text>
+
+    <!-- Gear / Service Badge Floating Top Left -->
+    <g transform="translate(-100, -70)">
+      <circle cx="0" cy="0" r="22" fill="#2563eb" stroke="#ffffff" stroke-width="3" />
+      <path d="M -8 -8 L 8 8 M -8 8 L 8 -8 M 0 -11 L 0 11 M -11 0 L 11 0" stroke="#ffffff" stroke-width="3" stroke-linecap="round" />
+    </g>
+
+    <!-- Verified Badge Floating Top Right -->
+    <g transform="translate(100, -70)">
+      <circle cx="0" cy="0" r="22" fill="#10b981" stroke="#ffffff" stroke-width="3" />
+      <path d="M -7 0 L -2 5 L 7 -5" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+    </g>
+  </g>
+
+  <!-- Banner at bottom -->
+  <g transform="translate(250, 420)">
+    <rect x="-115" y="-18" width="230" height="36" rx="18" fill="#1e293b" stroke="#3b82f6" stroke-width="1.5" />
+    <text x="0" y="5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="700" fill="#ffffff" letter-spacing="1">PRIORITY FLEET SUPPORT</text>
+  </g>
+</svg>

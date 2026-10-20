@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createStaffSession } from "@/lib/auth/staff-session";
+import { isSellerRole } from "@/lib/constants/staff";
 import type { StaffAuthResult } from "@/types/staff";
 
 export interface StaffEntryResponse {
@@ -17,5 +18,9 @@ export async function createStaffEntry(
   state: StaffAuthResult,
 ): Promise<StaffEntryResponse> {
   await createStaffSession(state.staff.id);
-  return { step: "COMPLETE", redirectTo: "/pos", staff: state.staff };
+  return {
+    step: "COMPLETE",
+    redirectTo: isSellerRole(state.staff.role) ? "/pos/register" : "/pos",
+    staff: state.staff,
+  };
 }

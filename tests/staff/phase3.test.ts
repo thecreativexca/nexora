@@ -590,7 +590,7 @@ async function runTeamTests(superAdminJar: CookieJar): Promise<void> {
       redirect: "manual",
     });
     const location = portal.headers.get("location") ?? "";
-    assert(location.includes("/pos/login"), `portal redirects to sign-in, got ${location}`);
+    assert(location.includes("/account/login"), `portal redirects to unified sign-in, got ${location}`);
 
     const removedHandoff = await fetch(`${BASE_URL}/pos/activate-mfa`, {
       headers: { Cookie: cookieHeader(cashier.jar) },
@@ -712,20 +712,19 @@ async function runGuardTests(superAdminJar: CookieJar): Promise<void> {
   await check("/pos redirects anonymous visitors to sign in", async () => {
     const response = await fetch(`${BASE_URL}/pos`, { redirect: "manual" });
     const location = response.headers.get("location") ?? "";
-    assert(location.includes("/pos/login"), `redirects to login, got ${location}`);
+    assert(location.includes("/account/login"), `redirects to login, got ${location}`);
   });
 
   await check("/pos/team redirects anonymous visitors to sign in", async () => {
     const response = await fetch(`${BASE_URL}/pos/team`, { redirect: "manual" });
     const location = response.headers.get("location") ?? "";
-    assert(location.includes("/pos/login"), `redirects to login, got ${location}`);
+    assert(location.includes("/account/login"), `redirects to login, got ${location}`);
   });
 
-  await check("the login page renders", async () => {
+  await check("the old POS login redirects to the unified login", async () => {
     const response = await fetch(`${BASE_URL}/pos/login`, { redirect: "manual" });
-    assertEqual(response.status, 200, "login page status");
-    const html = await response.text();
-    assert(/sign in/i.test(html), "login form present");
+    assertEqual(response.status, 307, "legacy login redirect status");
+    assert((response.headers.get("location") ?? "").includes("/account/login"), "unified login target");
   });
 
   await check("a signed-in staff member is not shown the public login form", async () => {
@@ -764,7 +763,7 @@ async function runGuardTests(superAdminJar: CookieJar): Promise<void> {
   });
 
   await check("portal pages are hidden from search engines", async () => {
-    const response = await fetch(`${BASE_URL}/pos/login`, { redirect: "manual" });
+    const response = await fetch(`${BASE_URL}/account/login`, { redirect: "manual" });
     const html = await response.text();
     assert(/noindex/i.test(html), "login page carries noindex");
   });

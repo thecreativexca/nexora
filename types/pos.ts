@@ -119,6 +119,12 @@ export interface PosReceiptItem {
 
 /** Complete, serialisable result of a finished in-store sale. */
 export interface PosReceipt {
+  business?: {
+    name: string;
+    address: string;
+    contact: string;
+    logoUrl: string;
+  };
   orderNumber: string;
   status: string;
   statusLabel: string;

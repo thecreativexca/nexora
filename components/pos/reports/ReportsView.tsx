@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 
 import { getJson } from "@/components/pos/api";
 import { AddExpenseDialog } from "@/components/pos/reports/AddExpenseDialog";
@@ -10,7 +9,6 @@ import { RevenueChart } from "@/components/pos/reports/RevenueChart";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { RefreshIcon } from "@/components/ui/icons";
-import { Price } from "@/components/ui/Price";
 import { Spinner } from "@/components/ui/Spinner";
 import { ErrorState } from "@/components/common/ErrorState";
 import type {
@@ -25,7 +23,6 @@ import type {
 } from "@/lib/services/analytics.service";
 import type { DailyClosingDocument } from "@/models/DailyClosing";
 import type { ExpenseDocument } from "@/models/Expense";
-import { formatDateTime } from "@/lib/utils/format";
 import { formatMoney } from "@/lib/utils/money";
 
 type ReportTab =
@@ -60,9 +57,11 @@ const PRESET_OPTIONS: { value: DateRangePreset; label: string }[] = [
   { value: "this_year", label: "This Year" },
 ];
 
-export function ReportsView() {
+export function ReportsView({ ownSalesOnly, canExport }: { ownSalesOnly: boolean; canExport: boolean }) {
   const [activeTab, setActiveTab] = useState<ReportTab>("sales");
   const [preset, setPreset] = useState<DateRangePreset>("this_month");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -84,6 +83,8 @@ export function ReportsView() {
   const [showExpenseDialog, setShowExpenseDialog] = useState(false);
   const [showClosingDialog, setShowClosingDialog] = useState(false);
 
+  const rangeQuery = `preset=${preset}${preset === "custom" ? `&startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}` : ""}`;
+
   useEffect(() => {
     let cancelled = false;
 
@@ -94,21 +95,21 @@ export function ReportsView() {
       try {
         if (activeTab === "sales") {
           const res = await getJson<{ sales: SalesAnalyticsResult }>(
-            `/api/pos/analytics/sales?preset=${preset}`,
+            `/api/pos/analytics/sales?${rangeQuery}`,
           );
           if (cancelled) return;
           if (res.ok) setSalesData(res.data.sales);
           else setError(res.message);
         } else if (activeTab === "financial") {
           const res = await getJson<{ financial: FinancialAnalyticsResult }>(
-            `/api/pos/analytics/financial?preset=${preset}`,
+            `/api/pos/analytics/financial?${rangeQuery}`,
           );
           if (cancelled) return;
           if (res.ok) setFinancialData(res.data.financial);
           else setError(res.message);
         } else if (activeTab === "payments") {
           const res = await getJson<{ payments: OfflinePaymentAnalyticsResult }>(
-            `/api/pos/analytics/payments?preset=${preset}`,
+            `/api/pos/analytics/payments?${rangeQuery}`,
           );
           if (cancelled) return;
           if (res.ok) setPaymentData(res.data.payments);
@@ -129,7 +130,7 @@ export function ReportsView() {
           else setError(res.message);
         } else if (activeTab === "staff") {
           const res = await getJson<{ staffList: StaffPerformanceRow[] }>(
-            `/api/pos/analytics/staff?preset=${preset}`,
+            `/api/pos/analytics/staff?${rangeQuery}`,
           );
           if (cancelled) return;
           if (res.ok) setStaffData(res.data.staffList);
@@ -161,7 +162,7 @@ export function ReportsView() {
     return () => {
       cancelled = true;
     };
-  }, [activeTab, preset, reloadKey]);
+  }, [activeTab, preset, startDate, endDate, rangeQuery, reloadKey]);
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6">
@@ -189,13 +190,21 @@ export function ReportsView() {
                   {opt.label}
                 </option>
               ))}
+              <option value="custom">Custom range</option>
             </select>
           )}
 
+          {preset === "custom" ? (
+            <div className="flex flex-wrap gap-2">
+              <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} aria-label="Report start date" className="h-9 rounded-xl border border-slate-300 bg-white px-2 text-xs" />
+              <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} aria-label="Report end date" className="h-9 rounded-xl border border-slate-300 bg-white px-2 text-xs" />
+            </div>
+          ) : null}
+
           {/* Export Buttons */}
-          <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+          {canExport ? <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
             <a
-              href={`/api/pos/reports/export?reportType=${activeTab}&format=csv&preset=${preset}`}
+              href={`/api/pos/reports/export?reportType=${activeTab}&format=csv&${rangeQuery}`}
               download
               className="rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
               title="Download RFC-4180 CSV with UTF-8 BOM"
@@ -204,7 +213,7 @@ export function ReportsView() {
             </a>
             <span className="text-slate-300">|</span>
             <a
-              href={`/api/pos/reports/export?reportType=${activeTab}&format=excel&preset=${preset}`}
+              href={`/api/pos/reports/export?reportType=${activeTab}&format=excel&${rangeQuery}`}
               download
               className="rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
               title="Download Excel Spreadsheet XML"
@@ -213,15 +222,14 @@ export function ReportsView() {
             </a>
             <span className="text-slate-300">|</span>
             <a
-              href={`/api/pos/reports/export?reportType=${activeTab}&format=pdf&preset=${preset}`}
-              target="_blank"
-              rel="noopener noreferrer"
+              href={`/api/pos/reports/export?reportType=${activeTab}&format=pdf&${rangeQuery}`}
+              download
               className="rounded-lg px-2.5 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-50"
               title="Printable Report / Save as PDF"
             >
-              Print / PDF
+              PDF
             </a>
-          </div>
+          </div> : null}
 
           <Button variant="secondary" size="sm" onClick={() => setReloadKey((k) => k + 1)}>
             <RefreshIcon className="h-4 w-4" /> Refresh
@@ -231,7 +239,7 @@ export function ReportsView() {
 
       {/* Report Module Navigation Tabs */}
       <div className="flex overflow-x-auto border-b border-slate-200 gap-1 pb-px scrollbar-none">
-        {TAB_OPTIONS.map((tab) => {
+        {TAB_OPTIONS.filter((tab) => !ownSalesOnly || tab.id === "sales").map((tab) => {
           const active = activeTab === tab.id;
           return (
             <button

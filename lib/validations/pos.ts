@@ -223,13 +223,13 @@ export type StockAdjustmentInput = z.output<typeof stockAdjustmentSchema>;
 export const categoryCreateSchema = z.object({
   name: z.string().trim().min(2, "Category name is required.").max(80),
   description: z.string().trim().max(500).optional(),
-  image: z.string().trim().max(1000).optional(),
+  image: productImageUrlSchema.optional(),
 });
 
 export const categoryUpdateSchema = z.object({
   name: z.string().trim().min(2, "Category name is required.").max(80).optional(),
   description: z.string().trim().max(500).optional(),
-  image: z.string().trim().max(1000).optional(),
+  image: productImageUrlSchema.optional(),
   isActive: z.boolean().optional(),
 });
 

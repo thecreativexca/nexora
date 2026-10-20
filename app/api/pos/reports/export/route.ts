@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { requireStaffApi } from "@/lib/auth/staff-session";
-import { isAdminRole, isSellerRole } from "@/lib/constants/staff";
+import { isSellerRole, STAFF_PERMISSION } from "@/lib/constants/staff";
 import {
   getCustomerAnalytics,
   getCustomerReceivablesAging,
@@ -18,6 +18,7 @@ import { listExpenses } from "@/lib/services/expense.service";
 import {
   generateCsvExport,
   generateExcelSpreadsheetXml,
+  generatePdfReport,
   generatePrintableHtmlReport,
   type ExportColumn,
   type ExportReportOptions,
@@ -30,8 +31,8 @@ export async function GET(request: NextRequest) {
   let staff: Awaited<ReturnType<typeof requireStaffApi>>;
   try {
     staff = await requireStaffApi();
-    if (isSellerRole(staff.role)) {
-      throw new ForbiddenError("Sellers are not authorized to export business reports.");
+    if (!staff.effectivePermissions.includes(STAFF_PERMISSION.REPORTS_EXPORT)) {
+      throw new ForbiddenError("You are not authorized to export reports.");
     }
   } catch (error) {
     return toErrorResponse(error, "GET /api/pos/reports/export auth");
@@ -44,6 +45,10 @@ export async function GET(request: NextRequest) {
     const preset = (searchParams.get("preset") as DateRangePreset) || "this_month";
     const startDate = searchParams.get("startDate") || undefined;
     const endDate = searchParams.get("endDate") || undefined;
+
+    if (isSellerRole(staff.role) && reportType !== "sales") {
+      throw new ForbiddenError("Sellers can export only their own sales report.");
+    }
 
     let exportOptions: ExportReportOptions;
 
@@ -87,9 +92,6 @@ export async function GET(request: NextRequest) {
 
       case "financial":
       case "profit-loss": {
-        if (!isAdminRole(staff.role)) {
-          throw new ForbiddenError("Only Administrators can export company-wide profit & loss reports.");
-        }
         const fin = await getFinancialAnalytics(preset, startDate, endDate, null, staff);
         const columns: ExportColumn[] = [
           { header: "Metric / Account", key: "metric" },
@@ -331,12 +333,20 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    if (format === "pdf" || format === "html") {
-      const html = generatePrintableHtmlReport(exportOptions);
-      return new NextResponse(html, {
+    if (format === "pdf") {
+      const pdf = generatePdfReport(exportOptions);
+      return new NextResponse(new Uint8Array(pdf), {
         headers: {
-          "Content-Type": "text/html; charset=utf-8",
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `attachment; filename="nexora-${reportType}-${preset}.pdf"`,
+          "Content-Length": String(pdf.byteLength),
         },
+      });
+    }
+
+    if (format === "html") {
+      return new NextResponse(generatePrintableHtmlReport(exportOptions), {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
       });
     }
 

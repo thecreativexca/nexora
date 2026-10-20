@@ -79,7 +79,7 @@ Portal pages are guarded by `requireStaff`; page-level permission checks gate re
 
 | Route | Purpose |
 |---|---|
-| `/pos/login` | Staff sign-in |
+| `/account/login` | Unified customer and staff sign-in |
 
 ## 9. Customer/storefront API routes
 

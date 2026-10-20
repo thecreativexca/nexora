@@ -1,6 +1,15 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  async redirects() {
+    return [
+      {
+        source: "/moblie",
+        destination: "/products?category=mobile",
+        permanent: true,
+      },
+    ];
+  },
   images: {
     /**
      * Product imagery currently comes from the seed catalogue CDN. Replace or

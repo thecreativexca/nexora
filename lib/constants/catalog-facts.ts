@@ -1,13 +1,13 @@
 /** Storefront copy that is factual for Phase 1 (no invented statistics). */
 
 export const SERVICE_FACTS = [
-  "Flexible offline payment (Cash, UPI, Card)",
-  "Genuine, warranty-backed products",
-  "In-house repair and setup services",
+  "Cash on Delivery for website orders",
+  "Live catalogue and availability checks",
+  "Order tracking with your order number",
 ] as const;
 
 export const HERO_POINTS = [
-  "Free delivery on orders above \u20b925,000",
-  "7-day replacement on unopened devices",
-  "Walk-in service centre for repairs",
+  "Guest checkout is supported",
+  "Stock is rechecked before every order",
+  "Saved accounts can review order history",
 ] as const;
