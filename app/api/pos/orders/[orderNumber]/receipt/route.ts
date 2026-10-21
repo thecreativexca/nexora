@@ -29,7 +29,7 @@ export async function GET(
       { header: "Unit price", key: "unitPriceInPaise", format: "currency" },
       { header: "Line total", key: "lineTotalInPaise", format: "currency" },
     ];
-    const pdf = generatePdfReport({
+    const pdf = await generatePdfReport({
       businessName: process.env.BUSINESS_NAME?.trim() || "Nexora",
       reportTitle: `Receipt / Invoice ${order.orderNumber}`,
       periodLabel: `${new Date(order.placedAt).toLocaleString("en-IN")} | ${order.paymentMethodLabel} | ${order.paymentStatusLabel}`,

@@ -7,6 +7,7 @@ import { ensureRequestTime } from "@/lib/db/request-time";
 import { listActiveCategories } from "@/lib/services/category.service";
 import { toDatabaseError } from "@/lib/services/service-errors";
 import { buildContainsRegExp, normalizeSearchTerm } from "@/lib/utils/search";
+import { ensureBarcodesForAllProducts } from "@/lib/services/barcode.service";
 import { Product } from "@/models/Product";
 import type {
   PosCategoryOption,
@@ -19,6 +20,9 @@ interface LeanPosProduct {
   name: string;
   sku: string;
   barcode?: string;
+  brand?: string;
+  deviceModel?: string;
+  caseColor?: string;
   description?: string;
   priceInPaise: number;
   mrpInPaise?: number;
@@ -32,7 +36,7 @@ interface LeanPosProduct {
 }
 
 const POS_PRODUCT_FIELDS =
-  "name slug sku barcode description priceInPaise mrpInPaise taxRate unit stock isService isFeatured image category";
+  "name slug sku barcode brand deviceModel caseColor description priceInPaise mrpInPaise taxRate unit stock isService isFeatured image category";
 
 function toPosProduct(product: LeanPosProduct, categoryName: string): PosProduct {
   const isService = Boolean(product.isService);
@@ -41,6 +45,9 @@ function toPosProduct(product: LeanPosProduct, categoryName: string): PosProduct
     name: product.name,
     sku: product.sku,
     barcode: product.barcode ?? "",
+    brand: product.brand ?? "",
+    deviceModel: product.deviceModel ?? "",
+    caseColor: product.caseColor ?? "",
     priceInPaise: product.priceInPaise,
     mrpInPaise: product.mrpInPaise ?? product.priceInPaise,
     taxRate: product.taxRate ?? 0,
@@ -76,6 +83,13 @@ export async function listPosProducts(
   try {
     await connectDB();
 
+    const missingBarcodes = await Product.exists({
+      $or: [{ barcode: { $exists: false } }, { barcode: null }, { barcode: "" }],
+    });
+    if (missingBarcodes) {
+      await ensureBarcodesForAllProducts(false);
+    }
+
     const categories = await listActiveCategories();
     if (categories.length === 0) {
       return { products: [], total: 0, page: input.page, pageSize: input.pageSize, totalPages: 0, categories: [] };
@@ -107,6 +121,9 @@ export async function listPosProducts(
         { name: pattern },
         { sku: pattern },
         { barcode: pattern },
+        { brand: pattern },
+        { deviceModel: pattern },
+        { caseColor: pattern },
         { description: pattern },
       ];
     }

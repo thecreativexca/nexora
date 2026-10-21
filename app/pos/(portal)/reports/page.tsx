@@ -4,7 +4,6 @@ import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/auth/staff-session";
 import { ReportsView } from "@/components/pos/reports/ReportsView";
 import { STAFF_PERMISSION } from "@/lib/constants/staff";
-import { isSellerRole } from "@/lib/constants/staff";
 
 export const metadata: Metadata = {
   title: "Reports",
@@ -20,7 +19,7 @@ export default async function PosReportsPage() {
 
   return (
     <ReportsView
-      ownSalesOnly={isSellerRole(staff.role)}
+      ownSalesOnly={!staff.effectivePermissions.includes(STAFF_PERMISSION.ACCESS_REPORTS)}
       canExport={staff.effectivePermissions.includes(STAFF_PERMISSION.REPORTS_EXPORT)}
     />
   );

@@ -14,6 +14,10 @@ export interface ProductDocument {
   minStockThreshold: number;
   sku: string;
   barcode?: string;
+  barcodeFormat?: "CODE128" | "EAN13" | "UPCA";
+  brand?: string;
+  deviceModel?: string;
+  caseColor?: string;
   stock: number;
   category: Types.ObjectId;
   supplier?: Types.ObjectId | null;
@@ -67,6 +71,15 @@ const productSchema = new Schema<ProductDocument>(
       uppercase: true,
       maxlength: 60,
     },
+    barcodeFormat: {
+      type: String,
+      enum: ["CODE128", "EAN13", "UPCA"],
+      default: "CODE128",
+    },
+    /** Optional variant identity. Each combination remains its own SKU/stock row. */
+    brand: { type: String, trim: true, default: "", maxlength: 80 },
+    deviceModel: { type: String, trim: true, default: "", maxlength: 120 },
+    caseColor: { type: String, trim: true, default: "", maxlength: 60 },
     /**
      * Available physical inventory.
      */
@@ -103,6 +116,7 @@ productSchema.index({ isActive: 1, isFeatured: 1, createdAt: -1 });
 productSchema.index({ isActive: 1, priceInPaise: 1 });
 /** Barcode lookup index. */
 productSchema.index({ barcode: 1 }, { unique: true, sparse: true });
+productSchema.index({ brand: 1, deviceModel: 1, caseColor: 1 });
 /** Low stock query index. */
 productSchema.index({ isActive: 1, isService: 1, stock: 1, minStockThreshold: 1 });
 

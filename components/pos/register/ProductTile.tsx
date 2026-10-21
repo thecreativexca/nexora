@@ -11,22 +11,25 @@ export function ProductTile({
   product,
   inCartQuantity,
   onAdd,
+  priority = false,
 }: {
   product: PosProduct;
   inCartQuantity: number;
   onAdd: (product: PosProduct) => void;
+  priority?: boolean;
 }) {
   const outOfStock = !product.isService && product.stock <= 0;
   const atCeiling =
     product.maxOrderable !== null && inCartQuantity >= product.maxOrderable;
 
   return (
-    <div className="flex flex-col rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition-shadow hover:shadow-md">
+    <div className="flex min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition-shadow hover:shadow-md">
       <div className="relative">
         <ProductImage
           src={product.image}
           alt={product.name}
           sizes="(max-width: 768px) 50vw, 25vw"
+          priority={priority}
         />
         {inCartQuantity > 0 ? (
           <span className="absolute right-2 top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-slate-900 px-1.5 text-xs font-bold text-white">
@@ -36,10 +39,21 @@ export function ProductTile({
       </div>
 
       <div className="mt-3 flex flex-1 flex-col gap-1">
-        <p className="truncate text-sm font-semibold text-slate-900" title={product.name}>
+        <p className="line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-slate-900" title={product.name}>
           {product.name}
         </p>
-        <p className="truncate text-xs text-slate-500">SKU {product.sku}</p>
+        <div className="flex items-center gap-1.5 truncate text-xs text-slate-500">
+          <span className="truncate">SKU {product.sku}</span>
+          {product.barcode ? (
+            <>
+              <span className="text-slate-300">·</span>
+              <span className="font-mono text-[10px] text-slate-500" title={`Barcode: ${product.barcode}`}>
+                {product.barcode}
+              </span>
+            </>
+          ) : null}
+        </div>
+        {product.brand || product.deviceModel || product.caseColor ? <p className="truncate text-[11px] font-medium text-indigo-600" title={[product.brand, product.deviceModel, product.caseColor].filter(Boolean).join(" · ")}>{[product.brand, product.deviceModel, product.caseColor].filter(Boolean).join(" · ")}</p> : null}
 
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
           {product.isService ? (

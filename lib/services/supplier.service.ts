@@ -7,7 +7,7 @@ import { connectDB } from "@/lib/db/mongodb";
 import { ensureRequestTime } from "@/lib/db/request-time";
 import { recordAudit } from "@/lib/services/audit.service";
 import { toDatabaseError } from "@/lib/services/service-errors";
-import { NotFoundError, InvalidRequestError } from "@/lib/utils/errors";
+import { NotFoundError } from "@/lib/utils/errors";
 import { normalizeSearchTerm, buildContainsRegExp } from "@/lib/utils/search";
 import { Supplier, type SupplierDocument } from "@/models/Supplier";
 import type { StaffView } from "@/types/staff";

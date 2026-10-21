@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 
 import { requireStaffApi } from "@/lib/auth/staff-session";
-import { isAdminRole, isSellerRole } from "@/lib/constants/staff";
+import { isSellerRole } from "@/lib/constants/staff";
 import {
   createExpense,
   listExpenses,

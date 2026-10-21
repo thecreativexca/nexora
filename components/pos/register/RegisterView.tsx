@@ -58,6 +58,10 @@ export function RegisterView({ staffName }: { staffName: string }) {
   const [barcodeNotification, setBarcodeNotification] = useState<string | null>(null);
 
   useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
+
+  useEffect(() => {
     let active = true;
 
     void (async () => {
@@ -97,6 +101,9 @@ export function RegisterView({ staffName }: { staffName: string }) {
         name: product.name,
         sku: product.sku,
         barcode: product.barcode,
+        brand: product.brand,
+        deviceModel: product.deviceModel,
+        caseColor: product.caseColor,
         image: product.image,
         unitPriceInPaise: product.priceInPaise,
         mrpInPaise: product.mrpInPaise,
@@ -214,7 +221,18 @@ export function RegisterView({ staffName }: { staffName: string }) {
     setSubmitting(false);
     if (result.ok) {
       setReceipt(result.data.receipt);
+      setCart([]);
       setCartOpen(false);
+      setCustomerName("");
+      setCustomerEmail("");
+      setCustomerPhone("");
+      setSelectedCustomer(null);
+      setDiscountInPaise(0);
+      setPaymentMethod(PAYMENT_METHOD.CASH);
+      setSplitPayments([]);
+      setCashReceivedInPaise(0);
+      setReferenceNumber("");
+      setPaymentNotes("");
     } else {
       setSubmitError(result.message);
     }
@@ -264,30 +282,41 @@ export function RegisterView({ staffName }: { staffName: string }) {
     cart.length === 0 ? "Charge total" : `Charge ${formatMoney(totalInPaise)}`;
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6 lg:px-8">
-      <header className="flex flex-wrap items-end justify-between gap-3">
+    <div className="mx-auto w-full max-w-7xl py-1 sm:py-2">
+      <header className="flex flex-wrap items-center justify-between gap-3 pb-2">
         <div>
           <h1 className="text-2xl font-black tracking-tight text-slate-900">Register</h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Opening the till for <span className="font-semibold">{staffName}</span>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Till active for <span className="font-semibold text-slate-800">{staffName}</span>
           </p>
         </div>
         {itemCount > 0 ? (
-          <span className="hidden text-sm text-slate-500 lg:block">
-            {itemCount} {itemCount === 1 ? "item" : "items"} in the sale
-          </span>
+          <div className="hidden lg:flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 border border-indigo-100 px-3 py-1 text-xs font-semibold text-indigo-700">
+              <span className="h-2 w-2 rounded-full bg-indigo-500 animate-pulse" />
+              {itemCount} {itemCount === 1 ? "item" : "items"} in sale
+            </span>
+          </div>
         ) : null}
       </header>
 
-      {receipt ? <ReceiptPanel receipt={receipt} onNewSale={newSale} /> : null}
+      {receipt ? (
+        <ReceiptPanel
+          receipt={receipt}
+          onNewSale={newSale}
+          onClose={() => {
+            setReceipt(null);
+            newSale();
+          }}
+        />
+      ) : null}
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_400px]">
-        <main>
+      <div className="mt-5 grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(340px,400px)] lg:items-start">
+        <main className="min-w-0">
           <div className="flex flex-col gap-3">
             <div className="relative">
               <input
                 type="search"
-                autoFocus
                 aria-label="Search products or scan barcode"
                 placeholder="Search products by name, SKU, or scan barcode…"
                 value={search}
@@ -385,10 +414,11 @@ export function RegisterView({ staffName }: { staffName: string }) {
           ) : (
             <>
               <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
-                {products.map((product) => (
+                {products.map((product, idx) => (
                   <ProductTile
                     key={product.id}
                     product={product}
+                    priority={idx < 4}
                     inCartQuantity={cart.find((line) => line.productId === product.id)?.quantity ?? 0}
                     onAdd={addToCart}
                   />
@@ -417,7 +447,7 @@ export function RegisterView({ staffName }: { staffName: string }) {
 
         <aside
           className={cn(
-            "fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-2xl transition-transform duration-200 lg:static lg:z-auto lg:w-auto lg:max-w-none lg:translate-x-0 lg:bg-transparent lg:shadow-none",
+            "fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-2xl transition-transform duration-200 lg:sticky lg:top-[88px] lg:z-20 lg:h-[calc(100dvh-104px)] lg:w-auto lg:max-w-none lg:translate-x-0 lg:self-start lg:bg-transparent lg:shadow-none",
             cartOpen ? "translate-x-0" : "translate-x-full",
           )}
         >

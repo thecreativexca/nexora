@@ -50,6 +50,12 @@ export const POS_NAV_ITEMS: PosNavItem[] = [
     description: "Stock levels and products",
   },
   {
+    href: "/pos/barcodes/print",
+    label: "Print Barcodes",
+    permission: STAFF_PERMISSION.ACCESS_INVENTORY,
+    description: "Print barcode labels for inventory",
+  },
+  {
     href: "/pos/reports",
     label: "Reports",
     permission: STAFF_PERMISSION.ACCESS_REPORTS,

@@ -56,6 +56,7 @@ export function Button({
     <button
       type={type}
       className={buttonClasses(variant, size, cn(fullWidth && "w-full", className))}
+      suppressHydrationWarning
       {...rest}
     >
       {children}

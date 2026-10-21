@@ -332,13 +332,13 @@ export function ReportsView({ ownSalesOnly, canExport }: { ownSalesOnly: boolean
             <h2 className="mb-4 text-sm font-semibold text-slate-900">
               Sales Trend — {salesData.range.label}
             </h2>
-            <RevenueChart
-              days={salesData.trends.map((t) => ({
-                date: t.dateKey,
-                label: t.label,
-                revenueInPaise: t.netSalesInPaise,
-              }))}
-            />
+            <div className="overflow-x-auto pb-1"><RevenueChart
+                days={salesData.trends.map((t) => ({
+                  date: t.dateKey,
+                  label: t.label,
+                  revenueInPaise: t.netSalesInPaise,
+                }))}
+              /></div>
           </section>
 
           {/* Category Contribution & Top Selling Products */}

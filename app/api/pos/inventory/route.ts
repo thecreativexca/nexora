@@ -40,13 +40,14 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const { q, categoryId, active, type, featured, page, pageSize } = parsed.data;
+    const { q, categoryId, active, type, featured, lowStockOnly, page, pageSize } = parsed.data;
     const result = await listInventoryProducts({
       search: q ?? "",
       categoryId: categoryId ?? "",
       active: active === undefined ? undefined : active === "true",
       type: type ?? undefined,
       featured: featured === undefined ? undefined : featured === "true",
+      lowStockOnly: lowStockOnly === "true",
       page: page ? Math.min(Number(page), INVENTORY_MAX_PAGE) : 1,
       pageSize: pageSize ? Math.min(Number(pageSize), INVENTORY_MAX_PAGE_SIZE) : INVENTORY_PAGE_SIZE,
     });

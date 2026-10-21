@@ -3,7 +3,6 @@
 import { useState } from "react";
 
 import { postJson } from "@/components/pos/api";
-import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { CloseIcon } from "@/components/ui/icons";
 import { Spinner } from "@/components/ui/Spinner";
@@ -41,7 +40,7 @@ export function ReturnDialog({
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const toggleItem = (productId: string, maxQty: number) => {
+  const toggleItem = (productId: string, _maxQty?: number) => {
     setReturnItems((prev) => {
       const next = { ...prev };
       if (next[productId]) {

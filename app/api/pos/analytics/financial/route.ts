@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 
 import { requireStaffApi } from "@/lib/auth/staff-session";
-import { isAdminRole } from "@/lib/constants/staff";
+import { STAFF_PERMISSION } from "@/lib/constants/staff";
 import {
   getFinancialAnalytics,
   type DateRangePreset,
@@ -13,8 +13,8 @@ export async function GET(request: NextRequest) {
   let staff: Awaited<ReturnType<typeof requireStaffApi>>;
   try {
     staff = await requireStaffApi();
-    if (!isAdminRole(staff.role)) {
-      throw new ForbiddenError("Only Administrators can access company-wide financial reports.");
+    if (!staff.effectivePermissions.includes(STAFF_PERMISSION.ACCESS_REPORTS)) {
+      throw new ForbiddenError("Your role is not permitted to access company-wide financial reports.");
     }
   } catch (error) {
     return toErrorResponse(error, "GET /api/pos/analytics/financial auth");

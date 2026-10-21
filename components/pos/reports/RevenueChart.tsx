@@ -11,8 +11,12 @@ import type { SalesReportDay } from "@/types/order";
 export function RevenueChart({ days }: { days: SalesReportDay[] }) {
   const maxRevenue = Math.max(...days.map((day) => day.revenueInPaise), 0);
 
+  if (days.length === 0 || maxRevenue === 0) {
+    return <div className="flex h-40 items-center justify-center rounded-lg bg-slate-50 text-sm text-slate-500">No sales were recorded in this period.</div>;
+  }
+
   return (
-    <div className="flex h-40 items-end gap-2 sm:gap-3">
+    <div className="flex h-48 min-w-[32rem] items-end gap-2 sm:gap-3" role="img" aria-label="Daily net sales bar chart">
       {days.map((day) => {
         const height =
           maxRevenue > 0 ? Math.max((day.revenueInPaise / maxRevenue) * 100, 3) : 3;
@@ -22,9 +26,9 @@ export function RevenueChart({ days }: { days: SalesReportDay[] }) {
         return (
           <div
             key={day.date}
-            className="group relative flex flex-1 flex-col items-center gap-1"
+            className="group relative flex h-full min-w-5 flex-1 flex-col items-center gap-1"
           >
-            <div className="relative flex w-full flex-1 items-end">
+            <div className="relative flex min-h-0 w-full flex-1 items-end">
               <div
                 className={cn(
                   "w-full rounded-t-md transition-colors group-hover:opacity-80",

@@ -5,8 +5,6 @@ import { Types } from "mongoose";
 import { AUDIT_ACTION } from "@/lib/constants/audit";
 import {
   ORDER_STATUS,
-  PAYMENT_METHOD,
-  PAYMENT_STATUS,
   REFUND_STATUS,
   computePaymentStatus,
   type PaymentMethod,
@@ -23,7 +21,7 @@ import {
   NotFoundError,
 } from "@/lib/utils/errors";
 import { Customer } from "@/models/Customer";
-import { Order, type OrderDocument } from "@/models/Order";
+import { Order } from "@/models/Order";
 import { Product } from "@/models/Product";
 import { STOCK_MOVEMENT_TYPE } from "@/models/StockMovement";
 import type { StaffView } from "@/types/staff";

@@ -143,6 +143,10 @@ const productBaseFields = {
   description: z.string().trim().max(2000, "This value is too long.").optional(),
   sku: z.string().trim().min(2, "SKU is required.").max(40, "SKU is too long."),
   barcode: z.string().trim().max(60).optional(),
+  barcodeFormat: z.enum(["CODE128", "EAN13", "UPCA"]).optional(),
+  brand: z.string().trim().max(80).optional(),
+  deviceModel: z.string().trim().max(120).optional(),
+  caseColor: z.string().trim().max(60).optional(),
   priceInPaise: paiseAmountSchema,
   costInPaise: paiseAmountSchema.optional(),
   mrpInPaise: paiseAmountSchema.optional(),
@@ -161,6 +165,18 @@ const productBaseFields = {
   isService: z.boolean().optional(),
 } as const;
 
+function validateVariantHierarchy(
+  value: { brand?: string; deviceModel?: string; caseColor?: string },
+  context: z.RefinementCtx,
+) {
+  if (value.deviceModel && !value.brand) {
+    context.addIssue({ code: "custom", path: ["deviceModel"], message: "Choose a brand before a device model." });
+  }
+  if (value.caseColor && (!value.brand || !value.deviceModel)) {
+    context.addIssue({ code: "custom", path: ["caseColor"], message: "Choose a brand and device model before a case color." });
+  }
+}
+
 export const inventoryProductCreateSchema = z.object({
   ...productBaseFields,
   costInPaise: paiseAmountSchema.optional(),
@@ -173,7 +189,7 @@ export const inventoryProductCreateSchema = z.object({
   isActive: z.boolean().optional(),
   isFeatured: z.boolean().optional(),
   isService: z.boolean().optional(),
-});
+}).superRefine(validateVariantHierarchy);
 
 export type InventoryProductCreate = z.output<typeof inventoryProductCreateSchema>;
 
@@ -183,6 +199,10 @@ export const inventoryProductUpdateSchema = z
     description: productBaseFields.description.optional(),
     sku: productBaseFields.sku.optional(),
     barcode: productBaseFields.barcode.optional(),
+    barcodeFormat: z.enum(["CODE128", "EAN13", "UPCA"]).optional(),
+    brand: productBaseFields.brand.optional(),
+    deviceModel: productBaseFields.deviceModel.optional(),
+    caseColor: productBaseFields.caseColor.optional(),
     priceInPaise: productBaseFields.priceInPaise.optional(),
     costInPaise: productBaseFields.costInPaise.optional(),
     mrpInPaise: productBaseFields.mrpInPaise.optional(),
@@ -197,6 +217,7 @@ export const inventoryProductUpdateSchema = z
     isFeatured: productBaseFields.isFeatured.optional(),
     isService: productBaseFields.isService.optional(),
   })
+  .superRefine(validateVariantHierarchy)
   .refine((value) => Object.keys(value).length > 0, {
     message: "Nothing to update.",
     path: ["form"],

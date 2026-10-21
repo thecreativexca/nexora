@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { PaginationControl } from "@/components/pos/Pagination";
@@ -17,11 +18,12 @@ import { formatMoney } from "@/lib/utils/money";
 import { INVENTORY_PAGE_SIZE } from "@/lib/constants/pos";
 import { formatDate } from "@/lib/utils/format";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
-import { getJson } from "@/components/pos/api";
+import { getJson, postJson } from "@/components/pos/api";
 import type {
   InventoryListResult,
   InventoryProduct,
   InventoryTypeFilter,
+  ProductVariantOptions,
 } from "@/types/pos";
 
 type ActiveFilter = "all" | "active" | "inactive";
@@ -29,6 +31,9 @@ type ActiveFilter = "all" | "active" | "inactive";
 export function InventoryView({ staffName }: { staffName: string }) {
   const [products, setProducts] = useState<InventoryProduct[]>([]);
   const [categories, setCategories] = useState<InventoryListResult["categories"]>([]);
+  const [variantOptions, setVariantOptions] = useState<ProductVariantOptions>({
+    brands: [], modelsByBrand: {}, colorsByBrandModel: {},
+  });
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -49,6 +54,31 @@ export function InventoryView({ staffName }: { staffName: string }) {
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<InventoryProduct | null>(null);
   const [adjustingProduct, setAdjustingProduct] = useState<InventoryProduct | null>(null);
+  const [generatingAllBarcodes, setGeneratingAllBarcodes] = useState(false);
+
+  const handleGenerateAllBarcodes = async () => {
+    setGeneratingAllBarcodes(true);
+    try {
+      const res = await postJson<{ total: number; updated: number; alreadyHadBarcode: number }>(
+        "/api/pos/inventory/barcode/generate-all",
+        { force: false },
+      );
+      if (res.ok) {
+        setToast(
+          res.data.updated > 0
+            ? `Generated barcodes for ${res.data.updated} product(s)! Total: ${res.data.total}.`
+            : `All ${res.data.total} products already have unique barcodes.`,
+        );
+        setReloadKey((k) => k + 1);
+      } else {
+        setToast(res.message || "Failed to generate barcodes.");
+      }
+    } catch {
+      setToast("Failed to generate barcodes.");
+    } finally {
+      setGeneratingAllBarcodes(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -74,6 +104,7 @@ export function InventoryView({ staffName }: { staffName: string }) {
       if (result.ok) {
         setProducts(result.data.products);
         setCategories(result.data.categories);
+        setVariantOptions(result.data.variantOptions);
         setTotal(result.data.total);
         setTotalPages(result.data.totalPages);
       } else {
@@ -119,6 +150,19 @@ export function InventoryView({ staffName }: { staffName: string }) {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => void handleGenerateAllBarcodes()}
+            disabled={generatingAllBarcodes}
+          >
+            {generatingAllBarcodes ? "Generating…" : "Generate Barcodes"}
+          </Button>
+          <Link
+            href="/pos/barcodes/print"
+            className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50 transition-colors"
+          >
+            Print Barcodes
+          </Link>
           <Button variant="secondary" onClick={() => setCategoryDialogOpen(true)}>
             Categories
           </Button>
@@ -272,6 +316,7 @@ export function InventoryView({ staffName }: { staffName: string }) {
                               {product.categoryName}
                               {product.unit ? ` · ${product.unit}` : ""}
                             </p>
+                            {product.brand || product.deviceModel || product.caseColor ? <p className="truncate text-xs font-medium text-indigo-600">{[product.brand, product.deviceModel, product.caseColor].filter(Boolean).join(" · ")}</p> : null}
                           </div>
                         </div>
                       </td>
@@ -368,6 +413,7 @@ export function InventoryView({ staffName }: { staffName: string }) {
         <InventoryProductForm
           product={editingProduct}
           categories={categories}
+          variantOptions={variantOptions}
           onClose={() => {
             setFormOpen(false);
             setEditingProduct(null);

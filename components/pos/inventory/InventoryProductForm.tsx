@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import Image from "next/image";
+import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/TextField";
@@ -8,13 +9,17 @@ import { ProductImage } from "@/components/common/ProductImage";
 import { getJson, uploadFileJson, patchJson, postJson } from "@/components/pos/api";
 import { cn } from "@/lib/utils/cn";
 import { MINOR_UNITS_PER_MAJOR_UNIT } from "@/lib/constants/currency";
-import type { InventoryProduct, PosCategoryOption } from "@/types/pos";
+import type { InventoryProduct, PosCategoryOption, ProductVariantOptions } from "@/types/pos";
 
 interface FormValues {
   name: string;
   description: string;
   sku: string;
   barcode: string;
+  barcodeFormat: "CODE128" | "EAN13" | "UPCA";
+  brand: string;
+  deviceModel: string;
+  caseColor: string;
   priceRup: string;
   costRup: string;
   mrpRup: string;
@@ -57,11 +62,13 @@ function rupToPaise(value: string): number | null {
 export function InventoryProductForm({
   product,
   categories,
+  variantOptions,
   onClose,
   onSaved,
 }: {
   product: InventoryProduct | null;
   categories: PosCategoryOption[];
+  variantOptions: ProductVariantOptions;
   onClose: () => void;
   onSaved: (product: InventoryProduct) => void;
 }) {
@@ -72,6 +79,10 @@ export function InventoryProductForm({
     description: product?.description ?? "",
     sku: product?.sku ?? "",
     barcode: product?.barcode ?? "",
+    barcodeFormat: product?.barcodeFormat ?? "CODE128",
+    brand: product?.brand ?? "",
+    deviceModel: product?.deviceModel ?? "",
+    caseColor: product?.caseColor ?? "",
     priceRup: product ? toRup(product.priceInPaise) : "",
     costRup: product ? toRup(product.costInPaise) : "",
     mrpRup: product?.mrpInPaise ? toRup(product.mrpInPaise) : "",
@@ -93,6 +104,17 @@ export function InventoryProductForm({
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [barcodeMode, setBarcodeMode] = useState<"auto" | "manual">(product?.barcode?.startsWith("NX-") ? "auto" : "manual");
+  const [generatingBarcode, setGeneratingBarcode] = useState(false);
+
+  const availableModels = useMemo(
+    () => variantOptions.modelsByBrand[values.brand] ?? [],
+    [variantOptions.modelsByBrand, values.brand],
+  );
+  const availableColors = useMemo(
+    () => variantOptions.colorsByBrandModel[`${values.brand}::${values.deviceModel}`] ?? [],
+    [variantOptions.colorsByBrandModel, values.brand, values.deviceModel],
+  );
 
   useEffect(() => {
     void (async () => {
@@ -112,6 +134,12 @@ export function InventoryProductForm({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = previous; };
+  }, []);
 
   const set = <K extends keyof FormValues>(key: K, value: FormValues[K]) => {
     setValues((previous) => ({ ...previous, [key]: value }));
@@ -142,6 +170,23 @@ export function InventoryProductForm({
     }
   };
 
+  const generateBarcode = async () => {
+    setGeneratingBarcode(true);
+    setFormError(null);
+    const result = await postJson<{ barcode: string; format: "CODE128" }>(
+      "/api/pos/inventory/barcode/generate",
+      {},
+    );
+    setGeneratingBarcode(false);
+    if (result.ok) {
+      set("barcode", result.data.barcode);
+      set("barcodeFormat", result.data.format);
+      setBarcodeMode("auto");
+    } else {
+      setFormError(result.message);
+    }
+  };
+
   const handleSubmit = async () => {
     setSubmitting(true);
     setFormError(null);
@@ -157,6 +202,10 @@ export function InventoryProductForm({
       description: values.description,
       sku: values.sku,
       barcode: values.barcode.trim() || undefined,
+      barcodeFormat: values.barcodeFormat,
+      brand: values.brand.trim() || undefined,
+      deviceModel: values.deviceModel.trim() || undefined,
+      caseColor: values.caseColor.trim() || undefined,
       priceInPaise: priceInPaise ?? 0,
       costInPaise: costInPaise ?? 0,
       mrpInPaise: mrpInPaise ?? undefined,
@@ -190,13 +239,13 @@ export function InventoryProductForm({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-0 sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="product-form-title"
     >
-      <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+      <div className="flex max-h-[100dvh] w-full max-w-3xl flex-col overflow-hidden bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl">
+        <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-5 py-4 sm:px-6">
           <h2
             id="product-form-title"
             className="text-lg font-bold text-slate-900"
@@ -213,16 +262,17 @@ export function InventoryProductForm({
           </button>
         </div>
 
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
         {formError ? (
           <p
             role="alert"
-            className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700"
+            className="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700"
           >
             {formError}
           </p>
         ) : null}
 
-        <div className="mt-5 space-y-4">
+        <div className="space-y-4">
           <TextField
             label="Product name"
             name="name"
@@ -240,16 +290,42 @@ export function InventoryProductForm({
               placeholder="e.g. TSH-BLU-001"
               onChange={(event) => set("sku", event.target.value)}
             />
-            <TextField
-              label="Barcode (EAN/UPC)"
-              name="barcode"
-              optional
-              value={values.barcode}
-              error={fieldErrors.barcode?.[0] ?? null}
-              placeholder="Scan or enter barcode"
-              onChange={(event) => set("barcode", event.target.value)}
-            />
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium text-slate-800">Barcode <span className="text-slate-400">(optional)</span></span>
+                <div className="flex rounded-lg border border-slate-200 p-0.5 text-xs">
+                  {(["manual", "auto"] as const).map((mode) => (
+                    <button key={mode} type="button" onClick={() => setBarcodeMode(mode)} className={cn("rounded-md px-2 py-1 font-semibold capitalize", barcodeMode === mode ? "bg-slate-900 text-white" : "text-slate-500")}>{mode}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <select value={values.barcodeFormat} disabled={barcodeMode === "auto"} onChange={(event) => set("barcodeFormat", event.target.value as FormValues["barcodeFormat"])} className="h-11 w-28 rounded-lg border border-slate-300 bg-white px-2 text-xs">
+                  <option value="CODE128">Code 128</option><option value="EAN13">EAN-13</option><option value="UPCA">UPC-A</option>
+                </select>
+                <input name="barcode" value={values.barcode} readOnly={barcodeMode === "auto"} placeholder={barcodeMode === "auto" ? "Generate an internal code" : "Scan or enter barcode"} onChange={(event) => set("barcode", event.target.value)} className="h-11 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 text-sm" />
+                {barcodeMode === "auto" ? <Button type="button" variant="secondary" size="sm" onClick={() => void generateBarcode()} disabled={generatingBarcode}>{generatingBarcode ? "…" : values.barcode ? "Regenerate" : "Generate"}</Button> : null}
+              </div>
+              {fieldErrors.barcode?.[0] ? <p className="text-xs font-medium text-rose-600">{fieldErrors.barcode[0]}</p> : null}
+              {values.barcode ? (
+                <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2">
+                  <Image unoptimized src={`/api/pos/inventory/barcode/label?code=${encodeURIComponent(values.barcode)}&format=${values.barcodeFormat}`} alt={`Barcode ${values.barcode}`} width={240} height={70} className="h-14 w-auto max-w-full bg-white" />
+                  <a target="_blank" rel="noreferrer" href={`/api/pos/inventory/barcode/label?code=${encodeURIComponent(values.barcode)}&format=${values.barcodeFormat}&print=1`} className="text-xs font-semibold text-indigo-700">Print label</a>
+                  <a download href={`/api/pos/inventory/barcode/label?code=${encodeURIComponent(values.barcode)}&format=${values.barcodeFormat}&download=1`} className="text-xs font-semibold text-indigo-700">Download SVG</a>
+                </div>
+              ) : null}
+            </div>
           </div>
+
+          <fieldset className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+            <legend className="px-1 text-sm font-semibold text-slate-800">Device case variant <span className="font-normal text-slate-400">(optional)</span></legend>
+            <p className="mb-3 text-xs text-slate-500">Use for separately stocked phone-case SKUs. Each product record keeps its own stock.</p>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div><label className="mb-1.5 block text-sm font-medium text-slate-800">Brand</label><input list="nexora-brands" value={values.brand} onChange={(event) => setValues((previous) => ({ ...previous, brand: event.target.value, deviceModel: "", caseColor: "" }))} placeholder="e.g. Apple" className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm"/><datalist id="nexora-brands">{variantOptions.brands.map((value) => <option key={value} value={value} />)}</datalist></div>
+              <div><label className="mb-1.5 block text-sm font-medium text-slate-800">Device model</label><input list="nexora-models" value={values.deviceModel} disabled={!values.brand} onChange={(event) => setValues((previous) => ({ ...previous, deviceModel: event.target.value, caseColor: "" }))} placeholder={values.brand ? "Select or add model" : "Choose brand first"} className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:bg-slate-100"/><datalist id="nexora-models">{availableModels.map((value) => <option key={value} value={value} />)}</datalist>{fieldErrors.deviceModel?.[0] ? <p className="mt-1 text-xs text-rose-600">{fieldErrors.deviceModel[0]}</p> : null}</div>
+              <div><label className="mb-1.5 block text-sm font-medium text-slate-800">Case color</label><input list="nexora-colors" value={values.caseColor} disabled={!values.deviceModel} onChange={(event) => set("caseColor", event.target.value)} placeholder={values.deviceModel ? "Select or add color" : "Choose model first"} className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm disabled:bg-slate-100"/><datalist id="nexora-colors">{availableColors.map((value) => <option key={value} value={value} />)}</datalist>{fieldErrors.caseColor?.[0] ? <p className="mt-1 text-xs text-rose-600">{fieldErrors.caseColor[0]}</p> : null}</div>
+            </div>
+          </fieldset>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
@@ -477,7 +553,8 @@ export function InventoryProductForm({
           </div>
         </div>
 
-        <div className="mt-6 flex items-center justify-end gap-3 border-t border-slate-200 pt-4">
+        </div>
+        <div className="flex shrink-0 items-center justify-end gap-3 border-t border-slate-200 bg-white px-5 py-4 sm:px-6">
           <Button variant="ghost" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>

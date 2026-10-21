@@ -13,6 +13,10 @@ export interface PosProduct {
   name: string;
   sku: string;
   barcode?: string;
+  barcodeFormat?: "CODE128" | "EAN13" | "UPCA";
+  brand?: string;
+  deviceModel?: string;
+  caseColor?: string;
   priceInPaise: number;
   mrpInPaise?: number;
   taxRate?: number;
@@ -50,6 +54,9 @@ export interface PosCartLine {
   name: string;
   sku: string;
   barcode?: string;
+  brand?: string;
+  deviceModel?: string;
+  caseColor?: string;
   image: string;
   unitPriceInPaise: number;
   mrpInPaise?: number;
@@ -162,6 +169,10 @@ export interface InventoryProduct {
   description: string;
   sku: string;
   barcode: string;
+  barcodeFormat: "CODE128" | "EAN13" | "UPCA";
+  brand: string;
+  deviceModel: string;
+  caseColor: string;
   priceInPaise: number;
   costInPaise: number;
   mrpInPaise: number;
@@ -190,6 +201,13 @@ export interface InventoryListResult {
   totalPages: number;
   /** All existing categories (for the Add/Edit product form). */
   categories: PosCategoryOption[];
+  variantOptions: ProductVariantOptions;
+}
+
+export interface ProductVariantOptions {
+  brands: string[];
+  modelsByBrand: Record<string, string[]>;
+  colorsByBrandModel: Record<string, string[]>;
 }
 
 export type InventoryTypeFilter = "physical" | "service";

@@ -26,6 +26,7 @@ import { Category } from "@/models/Category";
 import { Product } from "@/models/Product";
 import { STOCK_MOVEMENT_TYPE } from "@/models/StockMovement";
 import { Supplier } from "@/models/Supplier";
+import { normalizeAndValidateBarcode, ensureBarcodesForAllProducts } from "@/lib/services/barcode.service";
 import type {
   InventoryListResult,
   InventoryProduct,
@@ -46,6 +47,10 @@ interface LeanInventoryProduct {
   description: string;
   sku: string;
   barcode?: string;
+  barcodeFormat?: "CODE128" | "EAN13" | "UPCA";
+  brand?: string;
+  deviceModel?: string;
+  caseColor?: string;
   priceInPaise: number;
   costInPaise: number;
   mrpInPaise?: number;
@@ -64,7 +69,36 @@ interface LeanInventoryProduct {
 }
 
 const INVENTORY_FIELDS =
-  "name slug description sku barcode priceInPaise costInPaise mrpInPaise taxRate unit minStockThreshold stock category supplier image isActive isFeatured isService createdAt updatedAt";
+  "name slug description sku barcode barcodeFormat brand deviceModel caseColor priceInPaise costInPaise mrpInPaise taxRate unit minStockThreshold stock category supplier image isActive isFeatured isService createdAt updatedAt";
+
+async function loadVariantOptions(): Promise<InventoryListResult["variantOptions"]> {
+  const rows = await Product.find({ brand: { $nin: [null, ""] } })
+    .select("brand deviceModel caseColor")
+    .sort({ brand: 1, deviceModel: 1, caseColor: 1 })
+    .lean<Array<{ brand?: string; deviceModel?: string; caseColor?: string }>>();
+  const brands = new Set<string>();
+  const models = new Map<string, Set<string>>();
+  const colors = new Map<string, Set<string>>();
+  for (const row of rows) {
+    const brand = row.brand?.trim();
+    if (!brand) continue;
+    brands.add(brand);
+    const model = row.deviceModel?.trim();
+    if (!model) continue;
+    if (!models.has(brand)) models.set(brand, new Set());
+    models.get(brand)!.add(model);
+    const color = row.caseColor?.trim();
+    if (!color) continue;
+    const key = `${brand}::${model}`;
+    if (!colors.has(key)) colors.set(key, new Set());
+    colors.get(key)!.add(color);
+  }
+  return {
+    brands: [...brands],
+    modelsByBrand: Object.fromEntries([...models].map(([key, values]) => [key, [...values]])),
+    colorsByBrandModel: Object.fromEntries([...colors].map(([key, values]) => [key, [...values]])),
+  };
+}
 
 async function loadCategories(): Promise<{ map: Map<string, LeanCategoryRef>; options: PosCategoryOption[] }> {
   const categories = await Category.find().select("name").sort({ name: 1 }).lean<LeanCategoryRef[]>();
@@ -89,6 +123,10 @@ function toInventoryProduct(
     description: product.description ?? "",
     sku: product.sku,
     barcode: product.barcode ?? "",
+    barcodeFormat: product.barcodeFormat ?? "CODE128",
+    brand: product.brand ?? "",
+    deviceModel: product.deviceModel ?? "",
+    caseColor: product.caseColor ?? "",
     priceInPaise: product.priceInPaise,
     costInPaise: product.costInPaise ?? 0,
     mrpInPaise: product.mrpInPaise ?? product.priceInPaise,
@@ -129,6 +167,13 @@ export async function listInventoryProducts(
   try {
     await connectDB();
 
+    const missingBarcodes = await Product.exists({
+      $or: [{ barcode: { $exists: false } }, { barcode: null }, { barcode: "" }],
+    });
+    if (missingBarcodes) {
+      await ensureBarcodesForAllProducts(false);
+    }
+
     const { map: categoryByName, options } = await loadCategories();
 
     const filter: Record<string, unknown> = {};
@@ -140,6 +185,9 @@ export async function listInventoryProducts(
         { name: pattern },
         { sku: pattern },
         { barcode: pattern },
+        { brand: pattern },
+        { deviceModel: pattern },
+        { caseColor: pattern },
         { description: pattern },
       ];
     }
@@ -166,7 +214,7 @@ export async function listInventoryProducts(
       filter.$expr = { $lte: ["$stock", { $ifNull: ["$minStockThreshold", 5] }] };
     }
 
-    const [documents, total] = await Promise.all([
+    const [documents, total, variantOptions] = await Promise.all([
       Product.find(filter)
         .select(INVENTORY_FIELDS)
         .sort({ name: 1, _id: 1 })
@@ -174,6 +222,7 @@ export async function listInventoryProducts(
         .limit(input.pageSize)
         .lean<LeanInventoryProduct[]>(),
       Product.countDocuments(filter),
+      loadVariantOptions(),
     ]);
 
     // Load supplier names if any referenced
@@ -198,6 +247,7 @@ export async function listInventoryProducts(
       pageSize: input.pageSize,
       totalPages: Math.ceil(total / input.pageSize),
       categories: options,
+      variantOptions,
     };
   } catch (error) {
     throw toDatabaseError(error);
@@ -262,7 +312,8 @@ export async function createInventoryProduct(
   const category = await findCategoryOrThrow(input.category);
   const slug = slugify(input.name);
   const sku = normalizeSku(input.sku);
-  const barcode = input.barcode ? input.barcode.trim().toUpperCase() : undefined;
+  const barcodeFormat = input.barcodeFormat ?? "CODE128";
+  const barcode = input.barcode ? normalizeAndValidateBarcode(input.barcode, barcodeFormat) : undefined;
   const isService = input.isService ?? false;
 
   try {
@@ -275,6 +326,10 @@ export async function createInventoryProduct(
       description: input.description?.trim() ?? "",
       sku,
       barcode: barcode || undefined,
+      barcodeFormat,
+      brand: input.brand?.trim() ?? "",
+      deviceModel: input.deviceModel?.trim() ?? "",
+      caseColor: input.caseColor?.trim() ?? "",
       priceInPaise: input.priceInPaise,
       costInPaise: input.costInPaise ?? 0,
       mrpInPaise: input.mrpInPaise ?? input.priceInPaise,
@@ -370,12 +425,19 @@ export async function updateInventoryProduct(
   }
 
   if ("barcode" in input) {
-    const barcode = input.barcode ? input.barcode.trim().toUpperCase() : undefined;
+    const barcodeFormat = input.barcodeFormat ?? current.barcodeFormat ?? "CODE128";
+    const barcode = input.barcode ? normalizeAndValidateBarcode(input.barcode, barcodeFormat) : undefined;
     if (barcode !== current.barcode) {
       await assertUniqueSlugSkuAndBarcode(current.slug, current.sku, barcode, productId);
     }
     patch.barcode = barcode || null;
+    patch.barcodeFormat = barcodeFormat;
   }
+
+  if ("barcodeFormat" in input && !("barcode" in input)) patch.barcodeFormat = input.barcodeFormat;
+  if ("brand" in input) patch.brand = input.brand?.trim() ?? "";
+  if ("deviceModel" in input) patch.deviceModel = input.deviceModel?.trim() ?? "";
+  if ("caseColor" in input) patch.caseColor = input.caseColor?.trim() ?? "";
 
   if ("description" in input) patch.description = input.description ?? "";
   if ("priceInPaise" in input) patch.priceInPaise = input.priceInPaise;

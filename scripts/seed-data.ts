@@ -44,7 +44,14 @@ export const SEED_CATEGORIES: SeedCategory[] = [
   {
     name: "Cellphones",
     slug: "cellphones",
-    description: "Flagship and everyday smartphones with local warranty.",
+    description: "Flagship Android and everyday smartphones with local warranty.",
+    image: "/images/products/samsung-galaxy-s24-ultra.jpg",
+    isActive: true,
+  },
+  {
+    name: "iPhone",
+    slug: "iphone",
+    description: "Official Apple iPhone devices and certified models.",
     image: `${IMAGE_BASE}/smartphones/iphone-13-pro/1.webp`,
     isActive: true,
   },

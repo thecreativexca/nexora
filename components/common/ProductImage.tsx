@@ -29,15 +29,18 @@ export function ProductImage({
   sizes = "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw",
   className,
   priority = false,
+  loading,
 }: {
   src: string;
   alt: string;
   sizes?: string;
   className?: string;
   priority?: boolean;
+  loading?: "eager" | "lazy";
 }) {
   const [failed, setFailed] = useState(false);
   const showFallback = !isSafeImageSource(src) || failed;
+  const imageLoading = loading ?? (priority ? "eager" : undefined);
 
   return (
     <div
@@ -62,6 +65,7 @@ export function ProductImage({
           fill
           sizes={sizes}
           priority={priority}
+          loading={imageLoading}
           className="object-contain p-2"
           onError={() => setFailed(true)}
         />

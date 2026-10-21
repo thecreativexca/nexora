@@ -11,7 +11,7 @@ import { toDatabaseError } from "@/lib/services/service-errors";
 import { NotFoundError, InvalidRequestError } from "@/lib/utils/errors";
 import { slugify } from "@/lib/utils/slug";
 import { Product } from "@/models/Product";
-import { Category, type CategoryDocument } from "@/models/Category";
+import { Category } from "@/models/Category";
 import type { CategorySummary } from "@/types/catalog";
 import type { StaffView } from "@/types/staff";
 
@@ -25,8 +25,17 @@ interface LeanCategory {
 }
 
 function canonicalCategoryIdentity(category: Pick<LeanCategory, "name" | "slug">) {
-  if (category.slug.toLowerCase() === "moblie" || category.name.trim().toLowerCase() === "moblie") {
-    return { name: "Mobile", slug: "mobile" };
+  const s = category.slug.toLowerCase();
+  const n = category.name.trim().toLowerCase();
+  if (
+    s === "moblie" ||
+    n === "moblie" ||
+    s === "mobile" ||
+    n === "mobile" ||
+    s === "iphone" ||
+    n === "iphone"
+  ) {
+    return { name: "iPhone", slug: "iphone" };
   }
   return { name: category.name, slug: category.slug };
 }
@@ -53,12 +62,17 @@ async function loadActiveCategories(): Promise<CategorySummary[]> {
 
     return categories.map((category) => {
       const identity = canonicalCategoryIdentity(category);
+      const isCellphone = identity.slug === "cellphones" || category.slug === "cellphones";
+      const image = isCellphone && (!category.image || category.image.includes("iphone"))
+        ? "/images/products/samsung-galaxy-s24-ultra.jpg"
+        : (category.image ?? "");
+
       return {
         id: String(category._id),
         name: identity.name,
         slug: identity.slug,
         description: category.description ?? "",
-        image: category.image ?? "",
+        image,
         productCount: countByCategory.get(String(category._id)) ?? 0,
       };
     });
@@ -74,8 +88,9 @@ export async function getActiveCategoryBySlug(
   slug: string,
 ): Promise<CategorySummary | null> {
   const categories = await listActiveCategories();
-  const requested = slug.toLowerCase() === "moblie" ? "mobile" : slug;
-  return categories.find((category) => category.slug === requested) ?? null;
+  const lower = slug.toLowerCase();
+  const requested = lower === "moblie" || lower === "mobile" ? "iphone" : lower;
+  return categories.find((category) => category.slug.toLowerCase() === requested) ?? null;
 }
 
 /** Header/navigation helper - an unavailable database must not break the shell. */
@@ -115,12 +130,17 @@ export async function listAllCategoriesForStaff(): Promise<StaffCategoryView[]> 
 
     return categories.map((c) => {
       const identity = canonicalCategoryIdentity(c);
+      const isCellphone = identity.slug === "cellphones" || c.slug === "cellphones";
+      const image = isCellphone && (!c.image || c.image.includes("iphone"))
+        ? "/images/products/samsung-galaxy-s24-ultra.jpg"
+        : (c.image ?? "");
+
       return {
         id: String(c._id),
         name: identity.name,
         slug: identity.slug,
         description: c.description ?? "",
-        image: c.image ?? "",
+        image,
         isActive: c.isActive ?? true,
         productCount: countMap.get(String(c._id)) ?? 0,
       };

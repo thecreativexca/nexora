@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { requireStaffApi } from "@/lib/auth/staff-session";
-import { isSellerRole, STAFF_PERMISSION } from "@/lib/constants/staff";
+import { STAFF_PERMISSION } from "@/lib/constants/staff";
 import {
   getCustomerAnalytics,
   getCustomerReceivablesAging,
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get("startDate") || undefined;
     const endDate = searchParams.get("endDate") || undefined;
 
-    if (isSellerRole(staff.role) && reportType !== "sales") {
+    if (!staff.effectivePermissions.includes(STAFF_PERMISSION.ACCESS_REPORTS) && reportType !== "sales") {
       throw new ForbiddenError("Sellers can export only their own sales report.");
     }
 
@@ -106,8 +106,8 @@ export async function GET(request: NextRequest) {
           { metric: "Net Sales Revenue", amountInPaise: fin.netSalesInPaise, notes: "Gross Sales - Discounts - Returns" },
           { metric: "Less: Cost of Goods Sold (COGS)", amountInPaise: fin.costOfGoodsSoldInPaise, notes: "Acquisition cost of products sold" },
           { metric: "Gross Profit", amountInPaise: fin.grossProfitInPaise, notes: `Margin: ${fin.grossProfitMarginPercent}%` },
-          { metric: "Less: Operating Expenses", amountInPaise: fin.operatingExpensesInPaise, notes: fin.isExpenseDataComplete ? "Verified expense records" : "No expense records" },
-          { metric: "Net Operating Profit", amountInPaise: fin.netProfitInPaise ?? 0, notes: fin.isExpenseDataComplete ? `Net Margin: ${fin.netProfitMarginPercent}%` : "Operating expenses incomplete" },
+          { metric: "Less: Operating Expenses", amountInPaise: fin.isExpenseDataComplete ? fin.operatingExpensesInPaise : "Not available", notes: fin.isExpenseDataComplete ? "Verified expense records" : "No verified expense records for this period" },
+          { metric: "Net Operating Profit", amountInPaise: fin.netProfitInPaise ?? "Not calculated", notes: fin.isExpenseDataComplete ? `Net Margin: ${fin.netProfitMarginPercent}%` : "Not calculated because expense data is incomplete" },
           { metric: "Tax Collected (Liability)", amountInPaise: fin.taxCollectedInPaise, notes: "Excluded from revenue/profit" },
           { metric: "Net Cash / Digital Collections", amountInPaise: fin.netCollectionsInPaise, notes: "Total collections minus refunds" },
           { metric: "Outstanding Customer Receivables", amountInPaise: fin.outstandingReceivablesInPaise, notes: "Customer debts to collect" },
@@ -195,7 +195,7 @@ export async function GET(request: NextRequest) {
         exportOptions = {
           businessName: "Nexora",
           reportTitle: "Inventory Valuation & Low-Stock Report",
-          periodLabel: `Total Valuation: ${formatMoney(inv.inventoryValuationInPaise)}`,
+          periodLabel: `As of now • Total inventory valuation: ${formatMoney(inv.inventoryValuationInPaise)} • Detail table contains low-stock items only`,
           generatedBy: staff.name,
           columns,
           data: inv.lowStockItems as unknown as Record<string, unknown>[],
@@ -334,7 +334,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (format === "pdf") {
-      const pdf = generatePdfReport(exportOptions);
+      const pdf = await generatePdfReport(exportOptions);
       return new NextResponse(new Uint8Array(pdf), {
         headers: {
           "Content-Type": "application/pdf",

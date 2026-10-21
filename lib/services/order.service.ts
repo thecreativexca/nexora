@@ -62,6 +62,9 @@ interface LeanProductForOrder {
   name: string;
   sku: string;
   barcode?: string;
+  brand?: string;
+  deviceModel?: string;
+  caseColor?: string;
   image?: string;
   priceInPaise: number;
   stock: number;
@@ -316,7 +319,7 @@ function buildOrderSnapshots(
 
     items.push({
       productId: product._id,
-      productName: product.name,
+      productName: [product.name, [product.brand, product.deviceModel, product.caseColor].filter(Boolean).join(" · ")].filter(Boolean).join(" — "),
       sku: product.sku,
       image: product.image ?? "",
       quantity: line.quantity,
@@ -421,7 +424,7 @@ export async function createOnlineOrder(
     products = await Product.find({
       _id: { $in: requestedLines.map((line) => new Types.ObjectId(line.productId)) },
     })
-      .select("name sku barcode image priceInPaise stock taxRate unit isService isActive")
+      .select("name sku barcode brand deviceModel caseColor image priceInPaise stock taxRate unit isService isActive")
       .lean<LeanProductForOrder[]>();
   } catch (error) {
     throw toDatabaseError(error);
@@ -602,7 +605,7 @@ export async function createInStoreOrder(
     products = await Product.find({
       _id: { $in: requestedLines.map((line) => new Types.ObjectId(line.productId)) },
     })
-      .select("name sku barcode image priceInPaise stock taxRate unit isService isActive")
+      .select("name sku barcode brand deviceModel caseColor image priceInPaise stock taxRate unit isService isActive")
       .lean<LeanProductForOrder[]>();
   } catch (error) {
     throw toDatabaseError(error);

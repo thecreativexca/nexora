@@ -5,7 +5,12 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/moblie",
-        destination: "/products?category=mobile",
+        destination: "/products?category=iphone",
+        permanent: true,
+      },
+      {
+        source: "/mobile",
+        destination: "/products?category=iphone",
         permanent: true,
       },
     ];

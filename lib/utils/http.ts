@@ -56,12 +56,12 @@ export function toSuccessResponse<T>(data: T, status = 200): NextResponse<T> {
  * Reads a JSON request body or returns a ready-to-send error response.
  * Keeps every route handler's malformed-body handling identical.
  */
-export async function readJsonBody(
+export async function readJsonBody<T = unknown>(
   request: Request,
   context = "Read JSON request body",
-): Promise<{ body: unknown } | { error: NextResponse<ApiErrorBody> }> {
+): Promise<{ body: T } | { error: NextResponse<ApiErrorBody> }> {
   try {
-    return { body: await request.json() };
+    return { body: (await request.json()) as T };
   } catch {
     return {
       error: toErrorResponse(new InvalidRequestError("Send a JSON body."), context),

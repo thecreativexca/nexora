@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 
 import { ORDER_CHANNEL, ORDERS_MAX_PAGE, ORDERS_MAX_PAGE_SIZE, ORDERS_PAGE_SIZE } from "@/lib/constants/order";
-import { requirePermissionApi, requireStaffApi } from "@/lib/auth/staff-session";
+import { requireStaffApi } from "@/lib/auth/staff-session";
 import { STAFF_PERMISSION } from "@/lib/constants/staff";
 import { listStaffOrders } from "@/lib/services/staff-orders.service";
 import { toErrorResponse, toSuccessResponse } from "@/lib/utils/http";
